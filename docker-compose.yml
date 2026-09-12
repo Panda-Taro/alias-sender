@@ -1,0 +1,16 @@
+services:
+  alias-unit-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alias-unit-server
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - ALIAS_WEB_PORT=8000
+      - ALIAS_NODE_API_PORT_START=10080
+      - ALIAS_DB_PATH=/app/data/alias_sender.db
+      - ALIAS_LOG_DIR=/app/logs
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
