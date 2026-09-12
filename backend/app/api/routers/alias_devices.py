@@ -63,11 +63,11 @@ def create_alias_connector(payload: domain.AliasConnectorIn, db: Session = Depen
 
 
 @router.put("/alias-connectors/{connector_id}", response_model=domain.AliasConnectorOut)
-def update_alias_connector(connector_id: str, connector_label: str, db: Session = Depends(get_db)):
+def update_alias_connector(connector_id: str, payload: domain.AliasConnectorUpdateIn, db: Session = Depends(get_db)):
     connector = db.get(models.AliasConnector, connector_id)
     if connector is None:
         raise HTTPException(status_code=404, detail="AliasConnector not found")
-    connector.connector_label = connector_label
+    connector.connector_label = payload.connector_label
     db.commit()
     return connector
 

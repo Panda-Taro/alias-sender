@@ -39,7 +39,7 @@ WebGUIにアクセスできます。
 
 | 変数名 | デフォルト | 説明 |
 | --- | --- | --- |
-| `ALIAS_WEB_PORT` | `8000` | WebGUI/管理APIの待受ポート |
+| `ALIAS_WEB_PORT` | `8000` | WebGUI/管理APIの待受ポート(初回起動時のみ有効。以後はWebGUIの「システム設定」画面から変更した値がDBに保存され優先される) |
 | `ALIAS_NODE_API_PORT_START` | `10080` | AliasNode作成時の推奨開始ポート番号(GUI上の初期値目安) |
 | `ALIAS_DB_PATH` | `/app/data/alias_sender.db` | SQLiteファイルパス |
 | `ALIAS_LOG_DIR` | `/app/logs` | ログ出力先 |

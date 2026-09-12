@@ -52,3 +52,69 @@
 ## テスト
 - 要求された「最低限のユニットテスト」として、SDP同期ロジック、オフライン検知
   ロジック、Nodeスコープフィルタリングの3点に絞る(pytest)。
+
+## OSのIPアドレス表示 (運用フィードバック対応)
+- `socket.gethostname()`経由の解決はコンテナの`/etc/hosts`次第でOS上の実際の
+  インターフェースIPと一致しないことがある(`--network host`環境で特に顕著)。
+  そのため`ip -o -4 addr show`(なければ`ifconfig`、さらにフォールバックで
+  ソケットAPI)の出力を実際に解析して表示するように変更した
+  (`app/services/host_info.py`)。Dockerイメージに`iproute2`を追加インストール
+  している。
+
+## WebGUI待受ポートの動的変更 (運用フィードバック対応)
+- WebGUI/管理APIのポートを、コンテナ再起動なしにGUIから変更できるようにする
+  ため、`uvicorn app.main:app`をCLIから直接起動する構成をやめ、
+  `app/run.py`を自前のエントリーポイントとし、`WebServerManager`
+  (`app/services/web_server_manager.py`)が`uvicorn.Server`を
+  asyncioタスクとして管理する。ポート番号は`SystemSettings`テーブル
+  (新規、シングルトン)に永続化し、GUIでの変更は
+  `PUT /api/system/web-port`→バックグラウンドで`restart()`という流れになる。
+  リクエスト自体は旧ポートのサーバーが処理しているため、レスポンスを返した
+  後に非同期で切替えを行う(同期的に行うとサーバー自身の停止待ちでデッドロック
+  するため)。
+- `docker compose`から見た待受ポートは実質「GUI上の設定が正」になるため、
+  `docker-compose.yml`のポートマッピングという概念自体が無い
+  (`network_mode: host`によりホストの全ポートが直接コンテナに見える)ことと
+  整合する。
+
+## Registration APIの耐障害性 (運用フィードバック対応: Alias Nodeの点滅・
+   ダッシュボードの赤色固定・Senderが認識されない)
+- 従来は1つのZoneRdsConfigに対する処理(Node/Device/Source/Flow/Sender登録+
+  ハートビート)を1つのtry/exceptで囲っていたため、Sender登録が何らかの理由
+  (後述のFlow参照不整合など)で失敗すると、その回のハートビート送信自体が
+  スキップされていた。IS-04のRDS実装はハートビートが数サイクル途絶すると
+  Nodeを期限切れとして削除するため、これが「他ゾーンRDSでAlias Nodeが表示
+  されたり消えたりする」不具合の直接原因だった。
+- 対応として、Node登録失敗時のみ処理を中断し、Device/Source/Flow/Sender登録は
+  1件ずつ例外を捕捉して継続、ハートビートは(Node登録が成功していれば)
+  常に最後に試行する構成に変更した(`app/services/registration_engine.py`)。
+  `ZoneRdsStatus`に`senders_ok`/`senders_total`を追加し、ダッシュボードで
+  「何件中何件が登録できているか」と直近のエラー文字列を表示できるようにした。
+
+## Flowリソースの追加 (運用フィードバック対応: 他ゾーンRDSでSenderが認識され
+   ない)
+- 従来はSenderリソースの`flow_id`にSource ID(Sourceリソースのid)を代用して
+  いたが、IS-04のRDS実装(nmos-cpp等)は参照整合性を検証するため、
+  「flow_idが実際に登録されたFlowリソースを指していない」ことがSender登録の
+  400エラーの原因になり得る。これは前述のハートビート問題とあわせて、
+  「Node/Deviceは認識されるがSenderは認識されない」という報告と整合する。
+- 対応として、`source_id`から決定的に導出した`flow_id`
+  (`resources.derive_flow_id`, `uuid5`)を持つ最小限のFlowリソースを
+  実際にRegistration APIへ登録し、Node APIにも`/flows`, `/flows/{id}`を追加
+  した。技術パラメータ(フレームサイズ、ビット深度、サンプルレート等)は
+  SDPのfmtp/rtpmapから読み取れる範囲で反映し、読み取れない項目は一般的な
+  放送用途の既定値(1920x1080 progressive BT709、24bit等)にフォールバックする
+  近似実装であり、完全なSDP fmtp解析は行っていない。
+
+## NMOSリソースversionフィールドの安定化
+- 従来は登録/自己記述の都度`version`を現在時刻から生成していたため、内容が
+  変化していなくても5秒毎(ハートビート間隔)に`version`が変わり、受信側に
+  不要なMODIFIED通知を発生させ続けていた。これも表示のちらつきの一因になり
+  得るため、リソースの内容をハッシュ化し、前回と同一であれば同じversion
+  文字列を再利用するキャッシュ(`resources._stable_version`)を追加した。
+
+## Alias Connector更新APIのリクエスト形式変更
+- `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
+  として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を
+  設けるにあたりフロントエンドの実装を統一するため、JSONボディ
+  (`{"connector_label": "..."}`)を受け取る形式に変更した。

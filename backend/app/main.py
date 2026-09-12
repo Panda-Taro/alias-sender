@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routers import alias_devices, alias_nodes, alias_senders, dashboard, rds_config, system
-from app.db.database import init_db
+from app.config import settings
+from app.db import models
+from app.db.database import get_session, init_db
 from app.logging_config import setup_logging
 from app.services import registration_engine, same_zone_sync
 from app.services.node_port_manager import manager as node_port_manager
@@ -16,9 +18,22 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+def _ensure_system_settings() -> None:
+    """`app.run`経由でなくローカル開発で`uvicorn app.main:app`を直接使う場合でも
+    SystemSettingsの初期行を保証する。"""
+    db = get_session()
+    try:
+        if db.query(models.SystemSettings).first() is None:
+            db.add(models.SystemSettings(web_port=settings.web_port))
+            db.commit()
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _ensure_system_settings()
     await node_port_manager.sync()
     await same_zone_sync.engine.start()
     await registration_engine.engine.start()

@@ -12,6 +12,12 @@ export function AliasDevicesView() {
   const [deviceForm, setDeviceForm] = useState({ alias_device_label: "", alias_device_description: "" });
   const [connectorForm, setConnectorForm] = useState({ device_id: "", connector_label: "" });
 
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editDeviceForm, setEditDeviceForm] = useState({ alias_device_label: "", alias_device_description: "" });
+
+  const [editingConnectorId, setEditingConnectorId] = useState<string | null>(null);
+  const [editConnectorLabel, setEditConnectorLabel] = useState("");
+
   // X-Y crosspoint: fetch assignments for every node (small scale PoC, fine to fetch per node)
   const assignmentsQuery = useQuery({
     queryKey: ["all-device-assignments", nodes.data?.map((n) => n.id).join(",")],
@@ -34,6 +40,18 @@ export function AliasDevicesView() {
     qc.invalidateQueries({ queryKey: ["alias-devices"] });
   };
 
+  const startEditDevice = (id: string, label: string, description: string) => {
+    setEditingDeviceId(id);
+    setEditDeviceForm({ alias_device_label: label, alias_device_description: description });
+  };
+
+  const saveEditDevice = async () => {
+    if (!editingDeviceId) return;
+    await api.updateAliasDevice(editingDeviceId, editDeviceForm);
+    qc.invalidateQueries({ queryKey: ["alias-devices"] });
+    setEditingDeviceId(null);
+  };
+
   const createConnector = async () => {
     await api.createAliasConnector(connectorForm.device_id, connectorForm.connector_label);
     qc.invalidateQueries({ queryKey: ["alias-connectors"] });
@@ -43,6 +61,18 @@ export function AliasDevicesView() {
   const removeConnector = async (id: string) => {
     await api.deleteAliasConnector(id);
     qc.invalidateQueries({ queryKey: ["alias-connectors"] });
+  };
+
+  const startEditConnector = (id: string, label: string) => {
+    setEditingConnectorId(id);
+    setEditConnectorLabel(label);
+  };
+
+  const saveEditConnector = async () => {
+    if (!editingConnectorId) return;
+    await api.updateAliasConnector(editingConnectorId, editConnectorLabel);
+    qc.invalidateQueries({ queryKey: ["alias-connectors"] });
+    setEditingConnectorId(null);
   };
 
   const toggleAssignment = async (nodeId: string, deviceId: string) => {
@@ -84,17 +114,57 @@ export function AliasDevicesView() {
             </tr>
           </thead>
           <tbody>
-            {devices.data?.map((d) => (
-              <tr key={d.id} className="border-t border-border">
-                <td className="py-1">{d.alias_device_label}</td>
-                <td>{d.alias_device_description}</td>
-                <td>
-                  <button className="text-offline" onClick={() => removeDevice(d.id)}>
-                    削除
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {devices.data?.map((d) => {
+              const isEditing = editingDeviceId === d.id;
+              return (
+                <tr key={d.id} className="border-t border-border">
+                  {isEditing ? (
+                    <>
+                      <td className="py-1">
+                        <input
+                          className="bg-appbg border border-border rounded px-1 w-28"
+                          value={editDeviceForm.alias_device_label}
+                          onChange={(e) => setEditDeviceForm({ ...editDeviceForm, alias_device_label: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="bg-appbg border border-border rounded px-1 w-28"
+                          value={editDeviceForm.alias_device_description}
+                          onChange={(e) =>
+                            setEditDeviceForm({ ...editDeviceForm, alias_device_description: e.target.value })
+                          }
+                        />
+                      </td>
+                      <td className="flex gap-2">
+                        <button className="text-accent" onClick={saveEditDevice}>
+                          保存
+                        </button>
+                        <button className="text-gray-400" onClick={() => setEditingDeviceId(null)}>
+                          取消
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="py-1">{d.alias_device_label}</td>
+                      <td>{d.alias_device_description}</td>
+                      <td className="flex gap-2">
+                        <button
+                          className="text-accent"
+                          onClick={() => startEditDevice(d.id, d.alias_device_label, d.alias_device_description)}
+                        >
+                          編集
+                        </button>
+                        <button className="text-offline" onClick={() => removeDevice(d.id)}>
+                          削除
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Panel>
@@ -136,17 +206,46 @@ export function AliasDevicesView() {
             </tr>
           </thead>
           <tbody>
-            {connectors.data?.map((c) => (
-              <tr key={c.id} className="border-t border-border">
-                <td className="py-1">{c.connector_label}</td>
-                <td>{devices.data?.find((d) => d.id === c.device_id)?.alias_device_label}</td>
-                <td>
-                  <button className="text-offline" onClick={() => removeConnector(c.id)}>
-                    削除
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {connectors.data?.map((c) => {
+              const isEditing = editingConnectorId === c.id;
+              return (
+                <tr key={c.id} className="border-t border-border">
+                  {isEditing ? (
+                    <>
+                      <td className="py-1">
+                        <input
+                          className="bg-appbg border border-border rounded px-1 w-28"
+                          value={editConnectorLabel}
+                          onChange={(e) => setEditConnectorLabel(e.target.value)}
+                        />
+                      </td>
+                      <td>{devices.data?.find((d) => d.id === c.device_id)?.alias_device_label}</td>
+                      <td className="flex gap-2">
+                        <button className="text-accent" onClick={saveEditConnector}>
+                          保存
+                        </button>
+                        <button className="text-gray-400" onClick={() => setEditingConnectorId(null)}>
+                          取消
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="py-1">{c.connector_label}</td>
+                      <td>{devices.data?.find((d) => d.id === c.device_id)?.alias_device_label}</td>
+                      <td className="flex gap-2">
+                        <button className="text-accent" onClick={() => startEditConnector(c.id, c.connector_label)}>
+                          編集
+                        </button>
+                        <button className="text-offline" onClick={() => removeConnector(c.id)}>
+                          削除
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Panel>

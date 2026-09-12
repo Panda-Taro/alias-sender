@@ -1,19 +1,24 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api } from "../api";
+import { api, type AliasNode } from "../api";
 import { Panel } from "../components/Panel";
+
+type NodeForm = Omit<AliasNode, "id" | "created_at">;
 
 export function AliasNodesView() {
   const qc = useQueryClient();
   const nodes = useQuery({ queryKey: ["alias-nodes"], queryFn: api.listAliasNodes });
   const zoneConfigs = useQuery({ queryKey: ["zone-rds-configs"], queryFn: () => api.listZoneRdsConfigs() });
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<NodeForm>({
     alias_node_label: "",
     alias_node_description: "",
     node_api_enabled: true,
     node_api_port: 10080,
   });
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<NodeForm | null>(null);
 
   const create = async () => {
     await api.createAliasNode(form);
@@ -25,6 +30,32 @@ export function AliasNodesView() {
     try {
       await api.deleteAliasNode(id);
       qc.invalidateQueries({ queryKey: ["alias-nodes"] });
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
+  const startEdit = (n: AliasNode) => {
+    setEditingId(n.id);
+    setEditForm({
+      alias_node_label: n.alias_node_label,
+      alias_node_description: n.alias_node_description,
+      node_api_enabled: n.node_api_enabled,
+      node_api_port: n.node_api_port,
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !editForm) return;
+    try {
+      await api.updateAliasNode(editingId, editForm);
+      qc.invalidateQueries({ queryKey: ["alias-nodes"] });
+      cancelEdit();
     } catch (e) {
       alert((e as Error).message);
     }
@@ -60,7 +91,7 @@ export function AliasNodesView() {
             type="number"
             className="bg-appbg border border-border rounded px-2 py-1 w-28"
             placeholder="node_api_port"
-            value={form.node_api_port}
+            value={form.node_api_port ?? ""}
             onChange={(e) => setForm({ ...form, node_api_port: Number(e.target.value) })}
           />
           <button
@@ -86,20 +117,71 @@ export function AliasNodesView() {
             </tr>
           </thead>
           <tbody>
-            {nodes.data?.map((n) => (
-              <tr key={n.id} className="border-t border-border">
-                <td className="py-1">{n.alias_node_label}</td>
-                <td>{n.alias_node_description}</td>
-                <td>{n.node_api_enabled ? "ON" : "OFF"}</td>
-                <td>{n.node_api_port}</td>
-                <td>{linkedRdsCount(n.id)}</td>
-                <td>
-                  <button className="text-offline" onClick={() => remove(n.id)}>
-                    削除
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {nodes.data?.map((n) => {
+              const isEditing = editingId === n.id;
+              return (
+                <tr key={n.id} className="border-t border-border">
+                  {isEditing && editForm ? (
+                    <>
+                      <td className="py-1">
+                        <input
+                          className="bg-appbg border border-border rounded px-1 w-28"
+                          value={editForm.alias_node_label}
+                          onChange={(e) => setEditForm({ ...editForm, alias_node_label: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="bg-appbg border border-border rounded px-1 w-28"
+                          value={editForm.alias_node_description}
+                          onChange={(e) => setEditForm({ ...editForm, alias_node_description: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={editForm.node_api_enabled}
+                          onChange={(e) => setEditForm({ ...editForm, node_api_enabled: e.target.checked })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="bg-appbg border border-border rounded px-1 w-20"
+                          value={editForm.node_api_port ?? ""}
+                          onChange={(e) => setEditForm({ ...editForm, node_api_port: Number(e.target.value) })}
+                        />
+                      </td>
+                      <td>{linkedRdsCount(n.id)}</td>
+                      <td className="flex gap-2">
+                        <button className="text-accent" onClick={saveEdit}>
+                          保存
+                        </button>
+                        <button className="text-gray-400" onClick={cancelEdit}>
+                          取消
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="py-1">{n.alias_node_label}</td>
+                      <td>{n.alias_node_description}</td>
+                      <td>{n.node_api_enabled ? "ON" : "OFF"}</td>
+                      <td>{n.node_api_port}</td>
+                      <td>{linkedRdsCount(n.id)}</td>
+                      <td className="flex gap-2">
+                        <button className="text-accent" onClick={() => startEdit(n)}>
+                          編集
+                        </button>
+                        <button className="text-offline" onClick={() => remove(n.id)}>
+                          削除
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <div className="text-gray-500 mt-2">

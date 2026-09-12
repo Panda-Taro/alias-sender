@@ -173,6 +173,19 @@ class SameZoneRdsConfig(Base):
     query_api_version: Mapped[str] = mapped_column(String(16), nullable=True, default="v1.3")
 
 
+class SystemSettings(Base):
+    """本システム自体の設定 (WebGUI/管理APIの待受ポート等)。シングルトン想定。
+
+    要件定義書⑩の9テーブルには存在しない、運用要望(WebGUIポート変更)に対応する
+    ための追加テーブル。DECISIONS.md参照。
+    """
+
+    __tablename__ = "system_settings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    web_port: Mapped[int] = mapped_column(Integer, default=8000)
+
+
 class ZoneRdsConfig(Base):
     """他ゾーンRDS接続設定 (⑩-9)
 

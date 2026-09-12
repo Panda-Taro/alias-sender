@@ -74,3 +74,32 @@ def parse_transport_params(sdp_raw: str) -> dict:
         "destination_port": destination_port,
         "rtp_enabled": rtp_enabled,
     }
+
+
+_RTPMAP_FULL_RE = re.compile(r"^a=rtpmap:\d+\s+([\w-]+)/(\d+)(?:/(\d+))?", re.IGNORECASE)
+_FMTP_RE = re.compile(r"^a=fmtp:\d+\s+(.*)$")
+
+
+def parse_flow_technical_params(sdp_raw: str) -> dict:
+    """NMOS Flowリソース(video/audio)の技術パラメータ推定に使う、SDPからの
+    最小限の抽出。fmtp行のkey=value(;区切り)と、rtpmapのエンコーディング名/
+    クロックレート/チャンネル数を読み取る。値が見つからない項目は呼び出し側で
+    ブロードキャストの一般的な既定値にフォールバックする(DECISIONS.md参照)。
+    """
+    params: dict[str, str] = {}
+    for line in (sdp_raw or "").splitlines():
+        line = line.strip()
+        r = _RTPMAP_FULL_RE.match(line)
+        if r:
+            params.setdefault("encoding", r.group(1).lower())
+            params.setdefault("clock_rate", r.group(2))
+            if r.group(3):
+                params.setdefault("channels", r.group(3))
+        f = _FMTP_RE.match(line)
+        if f:
+            for kv in f.group(1).split(";"):
+                kv = kv.strip()
+                if "=" in kv:
+                    k, v = kv.split("=", 1)
+                    params.setdefault(k.strip().lower(), v.strip())
+    return params

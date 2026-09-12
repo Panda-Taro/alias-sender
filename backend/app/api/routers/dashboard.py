@@ -47,6 +47,16 @@ def rds_status(db: Session = Depends(get_db)):
                     if cfg.id in registration_engine.zone_status
                     else None
                 ),
+                "senders_ok": (
+                    registration_engine.zone_status[cfg.id].senders_ok
+                    if cfg.id in registration_engine.zone_status
+                    else 0
+                ),
+                "senders_total": (
+                    registration_engine.zone_status[cfg.id].senders_total
+                    if cfg.id in registration_engine.zone_status
+                    else 0
+                ),
             }
             for cfg in zone_configs
         ],

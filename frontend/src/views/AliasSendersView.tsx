@@ -55,12 +55,19 @@ export function AliasSendersView() {
     }
   };
 
+  const updateConnector = async (id: string, connector_id: string) => {
+    try {
+      await api.updateAliasSender(id, { connector_id });
+      qc.invalidateQueries({ queryKey: ["alias-senders"] });
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
   const remove = async (id: string) => {
     await api.deleteAliasSender(id);
     qc.invalidateQueries({ queryKey: ["alias-senders"] });
   };
-
-  const connectorLabel = (id: string) => connectors.data?.find((c) => c.id === id)?.connector_label ?? id;
 
   return (
     <div className="space-y-3">
@@ -176,7 +183,19 @@ export function AliasSendersView() {
                   <StatusDot online={s.sync_status === "online"} />
                 </td>
                 <td>{s.label}</td>
-                <td>{connectorLabel(s.connector_id)}</td>
+                <td>
+                  <select
+                    className="bg-appbg border border-border rounded px-1"
+                    value={s.connector_id}
+                    onChange={(e) => updateConnector(s.id, e.target.value)}
+                  >
+                    {connectors.data?.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {devices.data?.find((d) => d.id === c.device_id)?.alias_device_label} / {c.connector_label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
                 <td>
                   <select
                     className="bg-appbg border border-border rounded px-1"

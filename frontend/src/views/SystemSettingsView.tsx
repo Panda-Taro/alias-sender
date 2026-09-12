@@ -1,12 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Panel } from "../components/Panel";
 
 export function SystemSettingsView() {
+  const qc = useQueryClient();
   const systemInfo = useQuery({ queryKey: ["system-info"], queryFn: api.systemInfo });
   const fileInput = useRef<HTMLInputElement>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+
+  const [webPort, setWebPort] = useState<number>(8000);
+  const [portMessage, setPortMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (systemInfo.data) setWebPort(systemInfo.data.web_port);
+  }, [systemInfo.data]);
 
   const onImport = async () => {
     const file = fileInput.current?.files?.[0];
@@ -19,8 +26,39 @@ export function SystemSettingsView() {
     }
   };
 
+  const onSavePort = async () => {
+    try {
+      const res = await api.updateWebPort(webPort);
+      setPortMessage(
+        `${res.message} 新しいURL: ${window.location.protocol}//${window.location.hostname}:${webPort}/ に切り替えてください。`,
+      );
+      qc.invalidateQueries({ queryKey: ["system-info"] });
+    } catch (e) {
+      setPortMessage(`失敗: ${(e as Error).message}`);
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <Panel title="WebGUI/管理APIポート設定">
+        <div className="flex flex-wrap gap-2 items-end">
+          <input
+            type="number"
+            className="bg-appbg border border-border rounded px-2 py-1 w-28"
+            value={webPort}
+            onChange={(e) => setWebPort(Number(e.target.value))}
+          />
+          <button className="bg-accent px-3 py-1 rounded text-white" onClick={onSavePort}>
+            保存して切替
+          </button>
+        </div>
+        {portMessage && <div className="text-gray-300 mt-2">{portMessage}</div>}
+        <div className="text-gray-500 mt-2">
+          ※ 保存後、このWebGUI自体が新しいポートで再起動します(プロセス再起動は不要)。ブラウザで新しいURLに
+          アクセスし直してください。
+        </div>
+      </Panel>
+
       <Panel title="データベース エクスポート / インポート">
         <div className="mb-3">
           <a
@@ -45,7 +83,6 @@ export function SystemSettingsView() {
 
       <Panel title="OS情報">
         <div>IPアドレス: {systemInfo.data?.os_ip_addresses.join(", ")}</div>
-        <div>WebGUIポート: {systemInfo.data?.web_port}</div>
         <div>Node APIポート開始番号: {systemInfo.data?.node_api_port_start}</div>
         <div className="text-gray-500 mt-2">※ 参照専用。本システムからの設定変更は行いません。</div>
       </Panel>

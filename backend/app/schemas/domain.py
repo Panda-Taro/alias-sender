@@ -126,6 +126,10 @@ class AliasConnectorIn(BaseModel):
     connector_label: str
 
 
+class AliasConnectorUpdateIn(BaseModel):
+    connector_label: str
+
+
 class AliasConnectorOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -195,3 +199,7 @@ class SystemInfoOut(BaseModel):
     os_ip_addresses: list[str]
     web_port: int
     node_api_port_start: int
+
+
+class WebPortIn(BaseModel):
+    web_port: int = Field(ge=1, le=65535)

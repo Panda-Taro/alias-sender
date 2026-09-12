@@ -146,6 +146,8 @@ export interface RdsStatus {
     enabled: boolean;
     connected: boolean;
     last_error: string | null;
+    senders_ok: number;
+    senders_total: number;
   }>;
 }
 
@@ -207,6 +209,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ device_id: deviceId, connector_label: connectorLabel }),
     }),
+  updateAliasConnector: (id: string, connectorLabel: string) =>
+    request<AliasConnector>(`/alias-connectors/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ connector_label: connectorLabel }),
+    }),
   deleteAliasConnector: (id: string) => request<void>(`/alias-connectors/${id}`, { method: "DELETE" }),
 
   // real senders / alias senders
@@ -235,6 +242,11 @@ export const api = {
 
   // system
   systemInfo: () => request<SystemInfo>("/system/info"),
+  updateWebPort: (webPort: number) =>
+    request<{ status: string; message: string }>("/system/web-port", {
+      method: "PUT",
+      body: JSON.stringify({ web_port: webPort }),
+    }),
   exportDbUrl: () => `${BASE}/system/db/export`,
   importDb: async (file: File) => {
     const form = new FormData();

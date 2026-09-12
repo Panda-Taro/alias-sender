@@ -40,6 +40,66 @@ def create_node_app(node_id: str) -> FastAPI:
             raise HTTPException(status_code=404, detail="AliasNode not found")
         return scope
 
+    # ---------------- NMOS API discovery ルート ----------------
+    # IS-04/IS-05は、各階層で「配下に何があるか」をJSON配列で返す自己記述の
+    # 慣習がある(例: ブラウザで http://host:port/x-nmos を直接開いた際に
+    # 何らかの応答を返す必要がある)。これらのルートが無いと、ブラウザで
+    # ベースパスにアクセスした際に404となり「Webアクセスできない」ように
+    # 見えてしまう。
+
+    @app.get("/")
+    def root_index():
+        return ["x-nmos/"]
+
+    @app.get("/x-nmos")
+    @app.get("/x-nmos/")
+    def x_nmos_index():
+        return ["node/", "connection/"]
+
+    @app.get("/x-nmos/node")
+    @app.get("/x-nmos/node/")
+    def node_api_index():
+        return [f"{v}/" for v in sorted(IS04_VERSIONS)]
+
+    @app.get("/x-nmos/node/{version}")
+    @app.get("/x-nmos/node/{version}/")
+    def node_api_version_index(version: str):
+        _check_version(version, IS04_VERSIONS)
+        return ["self/", "devices/", "sources/", "flows/", "senders/", "receivers/"]
+
+    @app.get("/x-nmos/connection")
+    @app.get("/x-nmos/connection/")
+    def connection_api_index():
+        return [f"{v}/" for v in sorted(IS05_VERSIONS)]
+
+    @app.get("/x-nmos/connection/{version}")
+    @app.get("/x-nmos/connection/{version}/")
+    def connection_api_version_index(version: str):
+        _check_version(version, IS05_VERSIONS)
+        return ["single/"]
+
+    @app.get("/x-nmos/connection/{version}/single")
+    @app.get("/x-nmos/connection/{version}/single/")
+    def connection_single_index(version: str):
+        _check_version(version, IS05_VERSIONS)
+        return ["senders/", "receivers/"]
+
+    @app.get("/x-nmos/connection/{version}/single/senders")
+    @app.get("/x-nmos/connection/{version}/single/senders/")
+    def connection_single_senders_index(version: str, db: Session = Depends(get_db)):
+        _check_version(version, IS05_VERSIONS)
+        scope = _scope_or_404(db)
+        return [f"{s.id}/" for s in scope.senders]
+
+    @app.get("/x-nmos/connection/{version}/single/senders/{sender_id}")
+    @app.get("/x-nmos/connection/{version}/single/senders/{sender_id}/")
+    def connection_single_sender_index(version: str, sender_id: str, db: Session = Depends(get_db)):
+        _check_version(version, IS05_VERSIONS)
+        scope = _scope_or_404(db)
+        if find_sender_in_scope(scope, sender_id) is None:
+            raise HTTPException(status_code=404, detail="Sender not found in this AliasNode scope")
+        return ["constraints/", "staged/", "active/", "transportfile/"]
+
     @app.get("/x-nmos/node/{version}/self")
     def node_self(version: str, request: Request, db: Session = Depends(get_db)):
         _check_version(version, IS04_VERSIONS)
@@ -82,6 +142,21 @@ def create_node_app(node_id: str) -> FastAPI:
                 if s.source_id == source_id:
                     return resources.build_source_resource(s, device_by_connector[connector.id])
         raise HTTPException(status_code=404, detail="Source not found in this AliasNode scope")
+
+    @app.get("/x-nmos/node/{version}/flows")
+    def node_flows(version: str, db: Session = Depends(get_db)):
+        _check_version(version, IS04_VERSIONS)
+        scope = _scope_or_404(db)
+        return [resources.build_flow_resource(s) for s in scope.senders]
+
+    @app.get("/x-nmos/node/{version}/flows/{flow_id}")
+    def node_flow_detail(version: str, flow_id: str, db: Session = Depends(get_db)):
+        _check_version(version, IS04_VERSIONS)
+        scope = _scope_or_404(db)
+        for s in scope.senders:
+            if resources.derive_flow_id(s.source_id) == flow_id:
+                return resources.build_flow_resource(s)
+        raise HTTPException(status_code=404, detail="Flow not found in this AliasNode scope")
 
     @app.get("/x-nmos/node/{version}/senders")
     def node_senders(version: str, request: Request, db: Session = Depends(get_db)):
