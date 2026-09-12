@@ -138,34 +138,62 @@ class RegistrationEngine:
             for alias_sender in connector.senders:
                 senders_total += 1
                 reg = self._get_or_create_registration(db, alias_sender.id, config.id)
-                try:
-                    if alias_sender.sync_status == "online":
-                        await client.register_resource(
-                            "source", resources.build_source_resource(alias_sender, connector.device_id)
-                        )
-                        await client.register_resource("flow", resources.build_flow_resource(alias_sender))
-                        await client.register_resource(
-                            "sender",
-                            resources.build_sender_resource(alias_sender, connector.device_id, host, port, version),
-                        )
-                        reg.registration_status = "online"
-                        reg.last_registered_at = datetime.now(timezone.utc)
-                        currently_registered.add(alias_sender.id)
-                        senders_ok += 1
-                    else:
-                        if alias_sender.id in currently_registered:
-                            await client.delete_resource("sender", alias_sender.id)
-                            await client.delete_resource("flow", resources.derive_flow_id(alias_sender.source_id))
-                            await client.delete_resource("source", alias_sender.source_id)
-                            currently_registered.discard(alias_sender.id)
-                        reg.registration_status = "offline"
-                        senders_ok += 1  # 意図的にoffline: エラーではない
-                except Exception as exc:  # noqa: BLE001
+
+                if alias_sender.sync_status != "online":
+                    if alias_sender.id in currently_registered:
+                        for rtype, rid in (
+                            ("sender", alias_sender.id),
+                            ("flow", resources.derive_flow_id(alias_sender.source_id)),
+                            ("source", alias_sender.source_id),
+                        ):
+                            try:
+                                await client.delete_resource(rtype, rid)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning(
+                                    "Deregistration failed (zone RDS %s, %s %s): %s", config.id, rtype, rid, exc
+                                )
+                        currently_registered.discard(alias_sender.id)
                     reg.registration_status = "offline"
-                    errors.append(f"sender {alias_sender.label} registration failed: {exc}")
-                    logger.warning(
-                        "Sender registration failed (zone RDS %s, sender %s): %s", config.id, alias_sender.id, exc
+                    senders_ok += 1  # 意図的にoffline: エラーではない
+                    continue
+
+                # source/flow/sourceは互いに参照するため、1つでも失敗すれば
+                # このAliasSenderはonline扱いにしないが、どの資源で失敗した
+                # かを個別に記録できるよう例外を分離する(2件目以降の呼び出しは
+                # 前段が失敗していても診断のためにあえて試行する)。
+                sender_errors: list[str] = []
+                try:
+                    await client.register_resource(
+                        "source", resources.build_source_resource(alias_sender, connector.device_id)
                     )
+                except Exception as exc:  # noqa: BLE001
+                    sender_errors.append(f"source registration failed: {exc}")
+
+                try:
+                    await client.register_resource(
+                        "flow", resources.build_flow_resource(alias_sender, connector.device_id)
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    sender_errors.append(f"flow registration failed: {exc}")
+
+                try:
+                    await client.register_resource(
+                        "sender",
+                        resources.build_sender_resource(alias_sender, connector.device_id, host, port, version),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    sender_errors.append(f"sender registration failed: {exc}")
+
+                if sender_errors:
+                    reg.registration_status = "offline"
+                    message = f"{alias_sender.label}: " + " / ".join(sender_errors)
+                    errors.append(message)
+                    logger.warning("Sender registration failed (zone RDS %s): %s", config.id, message)
+                else:
+                    reg.registration_status = "online"
+                    reg.last_registered_at = datetime.now(timezone.utc)
+                    currently_registered.add(alias_sender.id)
+                    senders_ok += 1
 
         st.senders_total = senders_total
         st.senders_ok = senders_ok

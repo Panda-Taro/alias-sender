@@ -36,16 +36,18 @@ def test_sender_resource_flow_id_matches_derived_flow_id():
 
 def test_flow_resource_uses_sdp_derived_dimensions():
     alias_sender = _make_alias_sender()
-    flow = resources.build_flow_resource(alias_sender)
+    flow = resources.build_flow_resource(alias_sender, "device-1")
     assert flow["source_id"] == alias_sender.source_id
+    assert flow["device_id"] == "device-1"
     assert flow["frame_width"] == 1280
     assert flow["frame_height"] == 720
     assert flow["media_type"] == "video/raw"
+    assert len(flow["components"]) == 3
 
 
 def test_flow_resource_falls_back_to_defaults_without_fmtp():
     alias_sender = _make_alias_sender(sdp="v=0\nm=video 5000 RTP/AVP 96\na=rtpmap:96 raw/90000\n")
-    flow = resources.build_flow_resource(alias_sender)
+    flow = resources.build_flow_resource(alias_sender, "device-1")
     assert flow["frame_width"] == 1920
     assert flow["frame_height"] == 1080
 

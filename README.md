@@ -133,7 +133,7 @@ frontend/src/
 | AC-C01 X-Yクロスポイントによる多対多紐づけ | 実装済み・単体テストで検証 | `tests/test_node_scope.py` |
 | AC-C02 AliasConnectorのV/A/ANC制約 | 実装済み・単体テストで検証 | `tests/test_alias_sender_logic.py` |
 | AC-D01〜D04 AliasSender管理・SDP同期 | 実装済み・単体テストで検証 | label自動生成、SDP非改変同期、Source自動生成、media_type独立性を確認 |
-| AC-E01〜E02 他ゾーンRDS登録・ハートビート | 実装済み | 実RDSとの結合試験は未実施 |
+| AC-E01〜E02 他ゾーンRDS登録・ハートビート | 実装済み | ユーザーの実RDS(nmos-cpp)での試験で判明したSender登録400エラー(flow_idの参照整合性、Flowスキーマの必須フィールド不足)を修正済み。生成するSource/Flow/Senderリソースは、実際のAMWA IS-04 v1.3 JSON schemaに対する検証テスト(`tests/test_nmos_schema_compliance.py`)でカバーしている |
 | AC-F01〜F03 Node API/Connection API | 実装済み・手動結合確認済み | ローカルでAliasSender作成→動的ポートでのNode API `/self`, `/senders`, `/senders/{id}/transportfile`, Connection API `/active`, `/receivers`(空配列)の応答を確認済み |
 | AC-F04 実機でのIGMP Join成功(最終ゴール) | **未検証** | 実機のNMOS RDS/Receiver/ブロードキャストコントローラーが必要なため、本開発環境では検証できません |
 | AC-H01〜H03 WebGUI表示 | 実装済み・ビルド確認済み | `tsc --noEmit`, `vite build`, および統合起動での応答確認済み。実ブラウザでの目視確認は未実施 |

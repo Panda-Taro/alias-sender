@@ -147,15 +147,17 @@ def create_node_app(node_id: str) -> FastAPI:
     def node_flows(version: str, db: Session = Depends(get_db)):
         _check_version(version, IS04_VERSIONS)
         scope = _scope_or_404(db)
-        return [resources.build_flow_resource(s) for s in scope.senders]
+        device_by_connector = {c.id: c.device_id for c in scope.connectors}
+        return [resources.build_flow_resource(s, device_by_connector[s.connector_id]) for s in scope.senders]
 
     @app.get("/x-nmos/node/{version}/flows/{flow_id}")
     def node_flow_detail(version: str, flow_id: str, db: Session = Depends(get_db)):
         _check_version(version, IS04_VERSIONS)
         scope = _scope_or_404(db)
+        device_by_connector = {c.id: c.device_id for c in scope.connectors}
         for s in scope.senders:
             if resources.derive_flow_id(s.source_id) == flow_id:
-                return resources.build_flow_resource(s)
+                return resources.build_flow_resource(s, device_by_connector[s.connector_id])
         raise HTTPException(status_code=404, detail="Flow not found in this AliasNode scope")
 
     @app.get("/x-nmos/node/{version}/senders")

@@ -106,6 +106,30 @@
   放送用途の既定値(1920x1080 progressive BT709、24bit等)にフォールバックする
   近似実装であり、完全なSDP fmtp解析は行っていない。
 
+### 実際の400エラーで判明した具体的なスキーマ不備(確定原因)
+AMWA公式のIS-04 v1.3 JSON schema(`AMWA-TV/nmos-discovery-registration`
+リポジトリ、`tests/schemas/`に検証用として同梱)を取得し、生成JSONを実際に
+検証したところ、以下3点の不備が判明した。これがユーザー報告の
+「video/audio/ancillaryの全Senderが400 Bad Requestで登録失敗」の確定原因
+である:
+1. `flow_core.json`は`device_id`を必須プロパティとして要求する(v1.1以降)。
+   `build_flow_resource`にこのフィールドが欠落していた → 全media_typeで
+   Flow登録が400になり、結果としてSenderも登録されなかった。
+2. `flow_video_raw.json`は`components`(Y/Cb/Cr等のプレーンごとの
+   width/height/bit_depthの配列、最低1要素)を必須とする。videoのFlowにこの
+   フィールドが欠落していた。既定値として4:2:2 10bitを仮定して近似生成する
+   ことにした(正確なサブサンプリング/ビット深度はSDPのfmtpから完全には
+   判定していない)。
+3. `source_audio.json`のchannels[].symbolに`"M"`という値を設定していたが、
+   これはVSF TR-03 Appendix Aで定義された固定enum
+   (`L,R,C,LFE,Ls,Rs,...,M1,M2,...`)のいずれにも一致せず無効な値だった。
+   モノラルを表す`"M1"`に修正した。
+
+再発防止のため、`tests/test_nmos_schema_compliance.py`で生成した
+Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
+`jsonschema`で検証するテストを追加した。手作業でのフィールド確認だけでは
+このクラスの不備(必須フィールド欠落、enum値の誤り)を見逃していたため。
+
 ## NMOSリソースversionフィールドの安定化
 - 従来は登録/自己記述の都度`version`を現在時刻から生成していたため、内容が
   変化していなくても5秒毎(ハートビート間隔)に`version`が変わり、受信側に

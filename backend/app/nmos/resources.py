@@ -120,17 +120,24 @@ def build_source_resource(alias_sender: models.AliasSender, device_id: str) -> d
         "clock_name": None,
     }
     if alias_sender.media_type == "audio":
-        resource["channels"] = [{"label": "ch1", "symbol": "M"}]
+        # symbolはVSF TR-03 Appendix Aの固定enumのみ許容される
+        # (source_audio.jsonスキーマ)。"M1"はモノラル(numbered mono)を表す。
+        resource["channels"] = [{"label": "ch1", "symbol": "M1"}]
     return resource
 
 
-def build_flow_resource(alias_sender: models.AliasSender) -> dict:
+def build_flow_resource(alias_sender: models.AliasSender, device_id: str) -> dict:
     """AliasSenderに対応する最小限のFlowリソースを生成する(⑪6)。
 
     本システムは実際の映像音声アンシラリを生成/解析しないため、SDPの
     fmtp/rtpmapから技術パラメータを推定できる範囲で反映し、判定できない
     項目は一般的な放送用途の既定値にフォールバックする(近似実装、
     DECISIONS.md参照)。
+
+    AMWA IS-04 v1.3の`flow_core.json`スキーマは`device_id`を必須プロパティ
+    として要求する(v1.1以降)。当初この実装では未設定だったため、他ゾーンRDS
+    (nmos-cpp等)へのFlow登録がスキーマ検証エラー(400)で拒否され、結果として
+    Senderも登録できていなかった。
     """
     from app.services.sdp_utils import parse_flow_technical_params
 
@@ -143,16 +150,28 @@ def build_flow_resource(alias_sender: models.AliasSender) -> dict:
         "description": alias_sender.description or "",
         "tags": {},
         "source_id": alias_sender.source_id,
+        "device_id": device_id,
         "parents": [],
         "format": FORMAT_MAP[alias_sender.media_type],
     }
 
     if alias_sender.media_type == "video":
-        flow["frame_width"] = int(params.get("width", 1920))
-        flow["frame_height"] = int(params.get("height", 1080))
+        frame_width = int(params.get("width", 1920))
+        frame_height = int(params.get("height", 1080))
+        flow["frame_width"] = frame_width
+        flow["frame_height"] = frame_height
         flow["interlace_mode"] = "progressive"
         flow["colorspace"] = params.get("colorimetry", "BT709")
         flow["media_type"] = "video/raw"
+        # flow_video_raw.jsonはcomponents(各プレーンのwidth/height/bit_depth)を
+        # 必須とする。正確なサブサンプリング構成はfmtpから判定していないため、
+        # 4:2:2 10bitを既定として近似する(DECISIONS.md参照)。
+        chroma_width = frame_width // 2
+        flow["components"] = [
+            {"name": "Y", "width": frame_width, "height": frame_height, "bit_depth": 10},
+            {"name": "Cb", "width": chroma_width, "height": frame_height, "bit_depth": 10},
+            {"name": "Cr", "width": chroma_width, "height": frame_height, "bit_depth": 10},
+        ]
     elif alias_sender.media_type == "audio":
         encoding = params.get("encoding", "l24")
         bit_depth = {"l16": 16, "l24": 24, "l32": 32}.get(encoding, 24)
