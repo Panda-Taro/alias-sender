@@ -5,7 +5,7 @@ Real Senderを、別ゾーンのRDSに対して「別名のSender(Alias Sender)�
 代替登録し、Receiver/ブロードキャストコントローラーがReal Senderに一切
 アクセスせずにSDP情報を取得・IGMP Joinできるようにする検証用(PoC)システムです。
 
-詳細仕様は要件定義書(`Alias_Sender要件定義書.pdf`)の①〜⑭章を正とします。
+詳細仕様は要件定義書([docs/Alias_Sender要件定義書.pdf](docs/Alias_Sender要件定義書.pdf))の①〜⑭章を正とします。
 実装上の解釈・判断は [DECISIONS.md](DECISIONS.md) を参照してください。
 
 ## 前提条件
