@@ -57,7 +57,14 @@ class NodePortServerManager:
 
     async def _start(self, node_id: str, port: int) -> None:
         app = create_node_app(node_id)
-        config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning", loop="asyncio")
+        # log_config=None: uvicornが独自にlogging.config.dictConfig()を実行して
+        # uvicorn.access/uvicorn.errorのハンドラ・フィルタを上書きしてしまうのを防ぎ、
+        # app.logging_configで設定したルートロガー(ファイル出力含む)にそのまま
+        # 委譲する。動的Node APIサーバーはNodeの作成/削除の都度何度も再生成
+        # されるため、log_configを渡したままだと毎回ロギング設定が上書きされる。
+        config = uvicorn.Config(
+            app, host="0.0.0.0", port=port, log_level="info", loop="asyncio", log_config=None
+        )
         server = uvicorn.Server(config)
         task = asyncio.create_task(server.serve())
         self._servers[node_id] = _RunningServer(server, task, port)

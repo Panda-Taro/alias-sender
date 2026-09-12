@@ -152,6 +152,33 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   いなかった。これが原因のため、Node API/Connection APIサブアプリにも同様の
   ワイルドカードCORS許可を追加した。
 
+## アクセスログの可視化 (運用フィードバック対応: NMOS Explorer等での
+   「Cannot connect」の原因究明)
+- CORS修正後もRiedelのnmos_explorer(Qt/C++製、ブラウザではないためCORSの
+  影響を受けない)で同様のエラーが再現するとの報告があった。ログには
+  RDS経由のWebSocket subscriptionでのFlow/Sender取得は成功しており
+  (`QNmosJsonParser`が`transfer_characteristic`欠落を警告しつつ処理継続)、
+  エラーの発生箇所がP2PでNode/Connection APIへ到達した際の何らかの
+  リクエストなのか、それ以前の問題なのかがログから判断できなかった。
+- 調査の過程で、`uvicorn.Config(...)`に`log_config`を明示的に渡していない
+  ため、AliasNodeごとに動的生成する`uvicorn.Server`インスタンスが生成される
+  たびにuvicorn独自の`logging.config.dictConfig()`が実行され、
+  `app/logging_config.py`で設定したルートロガー(ファイル出力・
+  `uvicorn.access`のフィルタ)が毎回上書きされ、結果として`/x-nmos/...`への
+  実際のアクセスがログファイルに一切記録されていなかったことが判明した。
+  `uvicorn.Config(..., log_config=None)`を指定し、uvicornに独自のロギング
+  設定をさせないよう修正した。
+- あわせて、`uvicorn.access`ロガーを一律WARNING(無効化)にしていたのを
+  やめ、`/api/...`(WebGUI自身の定期ポーリングで数秒おきに発生し記録上ノイズ
+  が多い)へのアクセスのみを除外するフィルタ(`_SuppressManagementApiAccessLogs`)
+  に変更し、`/x-nmos/...`への外部からのアクセスはすべてログに残るようにした。
+  これにより、次に同様の相互接続トラブルが起きた際は`logs/app.log`を見れば
+  外部ツールがどのパスにどう到達したか(あるいは到達していないか)が直接
+  分かるようになる。
+- 併せて、videoのFlowリソースに`transfer_characteristic`(既定値"SDR",
+  `flow_video.json`でoptionalだが明示することでnmos_explorerのログ警告が
+  解消される)を追加した。
+
 ## Alias Connector更新APIのリクエスト形式変更
 - `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を

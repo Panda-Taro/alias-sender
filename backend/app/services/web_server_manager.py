@@ -23,7 +23,11 @@ class WebServerManager:
     async def start(self, port: int) -> None:
         from app.main import app  # 遅延importで循環importを回避
 
-        config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info", loop="asyncio")
+        # log_config=None: app.logging_configで設定したロガーをuvicornの
+        # 既定dictConfigで上書きさせないため(node_port_manager.pyと同様)
+        config = uvicorn.Config(
+            app, host="0.0.0.0", port=port, log_level="info", loop="asyncio", log_config=None
+        )
         server = uvicorn.Server(config)
         task = asyncio.create_task(server.serve())
         self._server, self._task, self.port = server, task, port

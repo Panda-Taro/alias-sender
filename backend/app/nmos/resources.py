@@ -162,6 +162,7 @@ def build_flow_resource(alias_sender: models.AliasSender, device_id: str) -> dic
         flow["frame_height"] = frame_height
         flow["interlace_mode"] = "progressive"
         flow["colorspace"] = params.get("colorimetry", "BT709")
+        flow["transfer_characteristic"] = "SDR"
         flow["media_type"] = "video/raw"
         # flow_video_raw.jsonはcomponents(各プレーンのwidth/height/bit_depth)を
         # 必須とする。正確なサブサンプリング構成はfmtpから判定していないため、
