@@ -9,6 +9,7 @@ Connection API(IS-05サーバー) (REQ-F/G, ⑪4-④⑤)。
 import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -33,6 +34,19 @@ def _check_version(version: str, allowed: set[str]) -> None:
 
 def create_node_app(node_id: str) -> FastAPI:
     app = FastAPI(title=f"Alias Node {node_id}")
+
+    # NMOS ExplorerなどブラウザベースのツールがNode API/Connection APIへ直接
+    # (RDS経由ではなくP2Pで)アクセスするため、CORSヘッダーが無いとブラウザ側で
+    # レスポンスがブロックされ「Cannot connect」のように見える。IS-04/05は
+    # 各実装がCORSを許可することを前提としているため、メインアプリ
+    # (app/main.py)と同様にワイルドカード許可を設定する(④③, NMOSのお作法)。
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+    )
 
     def _scope_or_404(db: Session):
         scope = get_node_scope(db, node_id)

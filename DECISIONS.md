@@ -137,6 +137,21 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   得るため、リソースの内容をハッシュ化し、前回と同一であれば同じversion
   文字列を再利用するキャッシュ(`resources._stable_version`)を追加した。
 
+## Node API/Connection APIサブアプリへのCORS許可 (運用フィードバック対応:
+   NMOS ExplorerでSenderを開くと「Cannot connect」)
+- RDS経由でNode/Device/Senderの一覧表示は成功するが、NMOS Explorer(ブラウザ/
+  Electronベースのツール)でSenderをクリックして詳細を見ようとすると
+  「Internal error: Cannot connect」になる、という報告があった。これは
+  ツールがRDSのキャッシュではなく、Sender/Nodeが自己申告するhost:port
+  (本システムのNode API)へ直接(P2P)アクセスして詳細情報や接続状態を取得する
+  実装になっているためで、ブラウザのfetch/XHRがCORSヘッダーの無い
+  レスポンスをブロックすると、JS側には(CORSエラーではなく)汎用的な
+  「接続できない」ように見えるエラーとして現れる。
+- メインアプリ(`app/main.py`)には元々`CORSMiddleware`を設定していたが、
+  AliasNodeごとに動的生成される`create_node_app()`のサブアプリには設定して
+  いなかった。これが原因のため、Node API/Connection APIサブアプリにも同様の
+  ワイルドカードCORS許可を追加した。
+
 ## Alias Connector更新APIのリクエスト形式変更
 - `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を
