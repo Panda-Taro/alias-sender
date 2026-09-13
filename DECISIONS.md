@@ -179,6 +179,27 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   `flow_video.json`でoptionalだが明示することでnmos_explorerのログ警告が
   解消される)を追加した。
 
+## 不変リソースの再POST抑制 (運用フィードバック対応: 実機NodeとのNMOSの
+   お作法上の差異)
+- ユーザーが他ゾーンRDS上でNMOS ExplorerのExplorer Logを比較したところ、
+  実機の他Node(Xscend2)では初回subscription時にリソースが1回ずつ追加され
+  た後は静かなのに対し、本システムのAliasNode/AliasSenderだけが5秒
+  (ハートビート間隔)おきに「Added X」→「SenderModel: Cannot add X. already
+  maintained」という無害だが繰り返しのGRAIN通知を発生させ続けていることが
+  判明した。原因は、`registration_engine._sync_one`が内容の変化有無に関わら
+  ず毎tickでnode/device/source/flow/senderを無条件に再POSTしていたためで、
+  通常のNMOS Node実装は「変化があった時だけPOST、それ以外は
+  `/health/nodes/{id}`ハートビートのみ」という作法に従う。
+- `RegistrationEngine._register_if_changed()`を追加し、
+  (zone_rds_config_id, リソース種別:リソースID) ごとに直前に送信した
+  `version`を記録して、同一versionであれば`register_resource`自体をスキップ
+  するようにした(ハートビートは毎tick変わらず送信する)。Senderがoffline
+  になり`delete_resource`した際は、該当キーの記録を破棄し、再度onlineに
+  戻った時に確実に再POSTされるようにしている。
+- これが「Cannot connect」の直接原因かどうかは未確定だが、実機Nodeとの
+  明確な振る舞いの差異であり、他ゾーンRDS/コントローラー側で不要な
+  GRAIN処理を積み重ねさせないという意味で、修正の価値がある。
+
 ## Alias Connector更新APIのリクエスト形式変更
 - `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を

@@ -43,6 +43,34 @@ class RegistrationEngine:
         self._stopping = False
         # tracks which resource ids are currently believed registered per zone_rds_config_id
         self._registered_sender_ids: dict[str, set[str]] = {}
+        # tracks the last successfully-sent `version` per (zone_rds_config_id, "type:id"),
+        # so unchanged resources are not re-POSTed every tick (see _register_if_changed).
+        self._last_sent_version: dict[str, dict[str, str]] = {}
+
+    async def _register_if_changed(
+        self, client: NmosRegistrationClient, config_id: str, resource_type: str, data: dict
+    ) -> None:
+        """内容が前回送信時と同一であれば再POSTしない。
+
+        従来は毎tick(5秒ごと)、内容が変化していなくてもnode/device/source/
+        flow/senderを無条件で再POSTしていた。実運用で他ゾーンRDS
+        (nmos-cpp)経由のNMOS Explorerのログを見ると、本システムのリソースに
+        ついてのみ5秒おきに"Added"通知が繰り返し発生しており、実機の他Node
+        (Xscend2)ではこの繰り返しが発生していなかった。これはNMOSの通常の
+        Node実装が「変化時のみPOST、それ以外は/healthハートビートのみ」という
+        作法に沿っていないことを示しており、クライアント側の不要な再処理
+        (今回の"Cannot connect"と直接関係するかは未確定だが、プロトコル上の
+        振る舞いの差異として明確な不具合)の原因になっていた。
+        """
+        versions = self._last_sent_version.setdefault(config_id, {})
+        key = f"{resource_type}:{data['id']}"
+        if versions.get(key) == data.get("version"):
+            return
+        await client.register_resource(resource_type, data)
+        versions[key] = data.get("version")
+
+    def _forget_sent_version(self, config_id: str, resource_type: str, resource_id: str) -> None:
+        self._last_sent_version.get(config_id, {}).pop(f"{resource_type}:{resource_id}", None)
 
     async def start(self) -> None:
         self._stopping = False
@@ -106,7 +134,7 @@ class RegistrationEngine:
         #      成立しないため、ここだけは失敗したら即座に終了する) ----
         try:
             node_resource = resources.build_node_resource(scope.node, host, port)
-            await client.register_resource("node", node_resource)
+            await self._register_if_changed(client, config.id, "node", node_resource)
         except Exception as exc:  # noqa: BLE001
             st.connected = False
             st.last_error = f"node registration failed: {exc}"
@@ -121,10 +149,10 @@ class RegistrationEngine:
 
         for device in scope.devices:
             try:
-                await client.register_resource(
-                    "device",
-                    resources.build_device_resource(device, config.node_id, device_sender_ids.get(device.id, [])),
+                device_resource = resources.build_device_resource(
+                    device, config.node_id, device_sender_ids.get(device.id, [])
                 )
+                await self._register_if_changed(client, config.id, "device", device_resource)
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"device {device.alias_device_label} registration failed: {exc}")
                 logger.warning("Device registration failed (zone RDS %s, device %s): %s", config.id, device.id, exc)
@@ -152,6 +180,7 @@ class RegistrationEngine:
                                 logger.warning(
                                     "Deregistration failed (zone RDS %s, %s %s): %s", config.id, rtype, rid, exc
                                 )
+                            self._forget_sent_version(config.id, rtype, rid)
                         currently_registered.discard(alias_sender.id)
                     reg.registration_status = "offline"
                     senders_ok += 1  # 意図的にoffline: エラーではない
@@ -163,24 +192,22 @@ class RegistrationEngine:
                 # 前段が失敗していても診断のためにあえて試行する)。
                 sender_errors: list[str] = []
                 try:
-                    await client.register_resource(
-                        "source", resources.build_source_resource(alias_sender, connector.device_id)
-                    )
+                    source_resource = resources.build_source_resource(alias_sender, connector.device_id)
+                    await self._register_if_changed(client, config.id, "source", source_resource)
                 except Exception as exc:  # noqa: BLE001
                     sender_errors.append(f"source registration failed: {exc}")
 
                 try:
-                    await client.register_resource(
-                        "flow", resources.build_flow_resource(alias_sender, connector.device_id)
-                    )
+                    flow_resource = resources.build_flow_resource(alias_sender, connector.device_id)
+                    await self._register_if_changed(client, config.id, "flow", flow_resource)
                 except Exception as exc:  # noqa: BLE001
                     sender_errors.append(f"flow registration failed: {exc}")
 
                 try:
-                    await client.register_resource(
-                        "sender",
-                        resources.build_sender_resource(alias_sender, connector.device_id, host, port, version),
+                    sender_resource = resources.build_sender_resource(
+                        alias_sender, connector.device_id, host, port, version
                     )
+                    await self._register_if_changed(client, config.id, "sender", sender_resource)
                 except Exception as exc:  # noqa: BLE001
                     sender_errors.append(f"sender registration failed: {exc}")
 
