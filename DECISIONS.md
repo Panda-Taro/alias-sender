@@ -200,6 +200,23 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   明確な振る舞いの差異であり、他ゾーンRDS/コントローラー側で不要な
   GRAIN処理を積み重ねさせないという意味で、修正の価値がある。
 
+## GET /devices/{deviceId}の実装漏れとcontrols欠落 (バグ報告対応)
+- `/x-nmos/node/{version}/devices`(一覧)は実装されていたが、単体取得
+  `GET /x-nmos/node/{version}/devices/{deviceId}`のルート自体が存在せず
+  404になっていた。加えて、`Device.controls`が常に空配列だったため、
+  仮に単体取得が実装されていても、NMOSコントローラーがSenderの`device_id`
+  からConnection APIのhrefを解決する手段がなかった。これがNMOS Explorerで
+  Alias Senderを開いた際の接続失敗の一因になっていた可能性がある
+  (⑤Connection APIサーバー機能, REQ-F02)。
+- `/devices/{deviceId}`を追加(スコープ外・存在しない場合は404)し、
+  `Device.controls`に、AMWA NMOS Device Control Typesパラメータレジスタ
+  (`urn:x-nmos:control:sr-ctrl/v1.0` / `v1.1`)で定義された正しいURNで
+  Connection APIのhref(`http://{host}:{node_api_port}/x-nmos/connection/
+  {version}/`)を2件(サポートするIS-05バージョンごと)含めるようにした。
+- 併せて実際のAMWA IS-04 v1.3 `device.json`スキーマを`tests/schemas/`に追加
+  し、生成するDeviceリソースがスキーマに準拠していることをテストで検証する
+  ようにした。`/sources/{id}`(REQ-F03)は元から実装済みだったため変更なし。
+
 ## Alias Connector更新APIのリクエスト形式変更
 - `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を

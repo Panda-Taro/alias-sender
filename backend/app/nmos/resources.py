@@ -26,6 +26,15 @@ FORMAT_MAP = {
 
 NMOS_API_VERSIONS = ["v1.0", "v1.1", "v1.2", "v1.3"]
 
+# AMWA NMOS Device Control Typesパラメータレジスタで定義されたConnection API
+# の control type URN (https://github.com/AMWA-TV/nmos-parameter-registers/
+# blob/main/device-control-types/README.md)。Device.controlsに含めることで、
+# コントローラーがSenderのdevice_idからConnection APIのhrefを解決できる。
+CONNECTION_API_CONTROL_URN = {
+    "v1.0": "urn:x-nmos:control:sr-ctrl/v1.0",
+    "v1.1": "urn:x-nmos:control:sr-ctrl/v1.1",
+}
+
 _version_cache: dict[str, tuple[str, str]] = {}
 
 
@@ -79,12 +88,19 @@ def build_node_resource(node: models.AliasNode, host: str, port: int) -> dict:
     }
 
 
-def build_device_resource(device: models.AliasDevice, node_id: str, sender_ids: list[str]) -> dict:
+def build_device_resource(
+    device: models.AliasDevice, node_id: str, sender_ids: list[str], host: str, port: int
+) -> dict:
+    controls = [
+        {"href": f"http://{host}:{port}/x-nmos/connection/{is05_version}/", "type": urn}
+        for is05_version, urn in sorted(CONNECTION_API_CONTROL_URN.items())
+    ]
     content = {
         "label": device.alias_device_label,
         "description": device.alias_device_description or "",
         "node_id": node_id,
         "senders": sorted(sender_ids),
+        "controls": controls,
     }
     return {
         "id": device.id,
@@ -96,7 +112,7 @@ def build_device_resource(device: models.AliasDevice, node_id: str, sender_ids: 
         "node_id": node_id,
         "senders": sender_ids,
         "receivers": [],
-        "controls": [],
+        "controls": controls,
     }
 
 

@@ -150,7 +150,7 @@ class RegistrationEngine:
         for device in scope.devices:
             try:
                 device_resource = resources.build_device_resource(
-                    device, config.node_id, device_sender_ids.get(device.id, [])
+                    device, config.node_id, device_sender_ids.get(device.id, []), host, port
                 )
                 await self._register_if_changed(client, config.id, "device", device_resource)
             except Exception as exc:  # noqa: BLE001

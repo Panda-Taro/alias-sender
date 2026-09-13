@@ -108,3 +108,24 @@ def test_node_resource_matches_schema():
     # nodeの完全なスキーマ(services/clocks/interfaces等)は未取得のため、
     # 共通のresource_core部分のみ検証する。
     _validate("resource_core.json", node_resource)
+
+
+def test_device_resource_matches_schema_and_advertises_connection_api():
+    device = models.AliasDevice(
+        id="55555555-5555-4555-8555-555555555555",
+        alias_device_label="Carrier",
+        alias_device_description="desc",
+    )
+    device_resource = resources.build_device_resource(
+        device, "44444444-4444-4444-8444-444444444444", [], "127.0.0.1", 10080
+    )
+    _validate("device.json", device_resource)
+
+    # REQ-F02: controlsにIS-05 Connection APIのhrefが含まれていること
+    # (デバイス単体取得が404のままだとNMOSコントローラーがこのhrefへ
+    # 到達できず、Connection API接続に失敗する)
+    control_types = {c["type"] for c in device_resource["controls"]}
+    assert "urn:x-nmos:control:sr-ctrl/v1.0" in control_types
+    assert "urn:x-nmos:control:sr-ctrl/v1.1" in control_types
+    for control in device_resource["controls"]:
+        assert control["href"].startswith("http://127.0.0.1:10080/x-nmos/connection/")

@@ -123,17 +123,31 @@ def create_node_app(node_id: str) -> FastAPI:
         return resources.build_node_resource(scope.node, host, port)
 
     @app.get("/x-nmos/node/{version}/devices")
-    def node_devices(version: str, db: Session = Depends(get_db)):
+    def node_devices(version: str, request: Request, db: Session = Depends(get_db)):
         _check_version(version, IS04_VERSIONS)
         scope = _scope_or_404(db)
         sender_ids_by_device: dict[str, list[str]] = {d.id: [] for d in scope.devices}
         for connector in scope.connectors:
             for s in connector.senders:
                 sender_ids_by_device.setdefault(connector.device_id, []).append(s.id)
+        host = get_primary_ip()
+        port = request.url.port or scope.node.node_api_port
         return [
-            resources.build_device_resource(d, node_id, sender_ids_by_device.get(d.id, []))
+            resources.build_device_resource(d, node_id, sender_ids_by_device.get(d.id, []), host, port)
             for d in scope.devices
         ]
+
+    @app.get("/x-nmos/node/{version}/devices/{device_id}")
+    def node_device_detail(version: str, device_id: str, request: Request, db: Session = Depends(get_db)):
+        _check_version(version, IS04_VERSIONS)
+        scope = _scope_or_404(db)
+        device = next((d for d in scope.devices if d.id == device_id), None)
+        if device is None:
+            raise HTTPException(status_code=404, detail="Device not found in this AliasNode scope")
+        sender_ids = [s.id for c in scope.connectors if c.device_id == device_id for s in c.senders]
+        host = get_primary_ip()
+        port = request.url.port or scope.node.node_api_port
+        return resources.build_device_resource(device, node_id, sender_ids, host, port)
 
     @app.get("/x-nmos/node/{version}/sources")
     def node_sources(version: str, db: Session = Depends(get_db)):
