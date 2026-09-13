@@ -15,6 +15,10 @@ export function SystemSettingsView() {
     if (systemInfo.data) setWebPort(systemInfo.data.web_port);
   }, [systemInfo.data]);
 
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+
+  const logs = useQuery({ queryKey: ["system-logs"], queryFn: () => api.getLogs(100) });
+
   const onImport = async () => {
     const file = fileInput.current?.files?.[0];
     if (!file) return;
@@ -35,6 +39,21 @@ export function SystemSettingsView() {
       qc.invalidateQueries({ queryKey: ["system-info"] });
     } catch (e) {
       setPortMessage(`失敗: ${(e as Error).message}`);
+    }
+  };
+
+  const onReset = async () => {
+    const confirmed = window.confirm(
+      "データベースを初期化します。AliasNode/Device/Connector/Senderおよび同一ゾーン・他ゾーンRDSの設定が" +
+        "すべて削除されます(WebGUIポート設定は保持されます)。この操作は取り消せません。よろしいですか？",
+    );
+    if (!confirmed) return;
+    try {
+      const res = await api.resetDatabase();
+      setResetMessage(res.message);
+      qc.invalidateQueries();
+    } catch (e) {
+      setResetMessage(`失敗: ${(e as Error).message}`);
     }
   };
 
@@ -79,6 +98,38 @@ export function SystemSettingsView() {
         <div className="text-gray-500 mt-2">
           ※ インポート後はバックグラウンドエンジンを完全に再同期させるため、コンテナの再起動を推奨します。
         </div>
+      </Panel>
+
+      <Panel title="初期化">
+        <button className="bg-offline px-3 py-1 rounded text-white" onClick={onReset}>
+          データベースを初期化(全削除)
+        </button>
+        {resetMessage && <div className="text-gray-300 mt-2">{resetMessage}</div>}
+        <div className="text-gray-500 mt-2">
+          ※ AliasNode/Device/Connector/Sender、RDS設定を含む全データを削除します。WebGUIポート設定のみ保持されます。
+        </div>
+      </Panel>
+
+      <Panel
+        title="ログ表示"
+        action={
+          <div className="flex gap-2">
+            <button
+              className="text-gray-300 hover:text-white text-xs"
+              onClick={() => qc.invalidateQueries({ queryKey: ["system-logs"] })}
+            >
+              更新
+            </button>
+            <a className="text-gray-300 hover:text-white text-xs" href={api.downloadLogsUrl()} download>
+              ダウンロード
+            </a>
+          </div>
+        }
+      >
+        <pre className="bg-appbg border border-border rounded p-2 text-[11px] max-h-96 overflow-y-auto whitespace-pre-wrap">
+          {logs.data?.lines.join("\n") || "(ログがありません)"}
+        </pre>
+        <div className="text-gray-500 mt-2">※ 最新100件を表示します。</div>
       </Panel>
 
       <Panel title="OS情報">

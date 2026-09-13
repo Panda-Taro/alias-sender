@@ -90,6 +90,7 @@ export interface AliasSender {
   id: string;
   connector_id: string;
   real_sender_id: string;
+  real_sender_label: string;
   label: string;
   description: string;
   media_type: MediaType;
@@ -255,4 +256,7 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  resetDatabase: () => request<{ status: string; message: string }>("/system/reset", { method: "POST" }),
+  getLogs: (lines = 100) => request<{ lines: string[] }>(`/system/logs?lines=${lines}`),
+  downloadLogsUrl: () => `${BASE}/system/logs/download`,
 };

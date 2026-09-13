@@ -101,7 +101,10 @@ export function DashboardView() {
         <div className="max-h-96 overflow-y-auto space-y-2">
           {aliasNodeTree.data?.map((nt) => (
             <div key={nt.node.id} className="border border-border rounded p-2">
-              <div className="font-semibold text-gray-200">{nt.node.alias_node_label}</div>
+              <div className="font-semibold text-gray-200">
+                {nt.node.alias_node_label}
+                <span className="text-gray-500 font-normal ml-2">Port: {nt.node.node_api_port ?? "-"}</span>
+              </div>
               {nt.devices.map((d) => (
                 <div key={d.id} className="ml-2 mt-1">
                   <button
@@ -129,6 +132,7 @@ export function DashboardView() {
                               <StatusDot online={s.sync_status === "online"} />
                               <span>{s.label}</span>
                               <span className="text-gray-500">{s.media_type}</span>
+                              <span className="text-gray-500">← {s.real_sender_label}</span>
                             </button>
                           ))}
                         </div>
@@ -139,7 +143,7 @@ export function DashboardView() {
               ))}
             </div>
           ))}
-          {aliasNodeTree.data?.length === 0 && <div className="text-gray-500">AliasNode未作成</div>}
+          {aliasNodeTree.data?.length === 0 && <div className="text-gray-500">Alias Node未作成</div>}
         </div>
       </Panel>
 

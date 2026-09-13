@@ -65,7 +65,7 @@ export function AliasNodesView() {
 
   return (
     <div className="space-y-3">
-      <Panel title="新規AliasNode作成">
+      <Panel title="新規Alias Node作成">
         <div className="flex flex-wrap gap-2 items-end">
           <input
             className="bg-appbg border border-border rounded px-2 py-1"
@@ -104,7 +104,7 @@ export function AliasNodesView() {
         </div>
       </Panel>
 
-      <Panel title="AliasNode一覧">
+      <Panel title="Alias Node一覧">
         <table className="w-full">
           <thead className="text-gray-400 text-left">
             <tr>

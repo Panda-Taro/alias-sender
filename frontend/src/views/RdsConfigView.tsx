@@ -125,14 +125,14 @@ export function RdsConfigView() {
         )}
       </Panel>
 
-      <Panel title="他ゾーンRDS情報 (Registration API送信先、AliasNode単位で複数登録可)">
+      <Panel title="他ゾーンRDS情報 (Registration API送信先、Alias Node単位で複数登録可)">
         <div className="flex flex-wrap gap-2 items-end mb-3">
           <select
             className="bg-appbg border border-border rounded px-2 py-1"
             value={newZone.node_id}
             onChange={(e) => setNewZone({ ...newZone, node_id: e.target.value })}
           >
-            <option value="">AliasNodeを選択</option>
+            <option value="">Alias Nodeを選択</option>
             {nodes.data?.map((n) => (
               <option key={n.id} value={n.id}>
                 {n.alias_node_label}
@@ -172,7 +172,7 @@ export function RdsConfigView() {
           <thead className="text-gray-400 text-left">
             <tr>
               <th className="py-1">状態</th>
-              <th>AliasNode</th>
+              <th>Alias Node</th>
               <th>IP:Port</th>
               <th>Ver</th>
               <th>Sender登録数</th>

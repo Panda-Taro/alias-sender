@@ -176,7 +176,7 @@ export function AliasDevicesView() {
             value={connectorForm.device_id}
             onChange={(e) => setConnectorForm({ ...connectorForm, device_id: e.target.value })}
           >
-            <option value="">AliasDeviceを選択</option>
+            <option value="">Alias Deviceを選択</option>
             {devices.data?.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.alias_device_label}
@@ -250,7 +250,7 @@ export function AliasDevicesView() {
         </table>
       </Panel>
 
-      <Panel title="X-Yクロスポイント: AliasNode(X) × AliasDevice(Y)">
+      <Panel title="X-Yクロスポイント: Alias Node(X) × Alias Device(Y)">
         <table className="w-full">
           <thead>
             <tr>

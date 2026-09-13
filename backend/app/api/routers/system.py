@@ -11,10 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import models
-from app.db.database import get_db, reopen_engine
+from app.db.database import Base, engine, get_db, get_session, reopen_engine
 from app.schemas import domain
+from app.services import registration_engine, same_zone_sync
 from app.services.host_info import get_os_ip_addresses
+from app.services.node_port_manager import manager as node_port_manager
 from app.services.web_server_manager import manager as web_server_manager
+from app.nmos import resources as nmos_resources
 
 logger = logging.getLogger(__name__)
 
@@ -78,3 +81,56 @@ async def import_db(file: UploadFile):
     tmp_path.replace(db_path)
     reopen_engine()
     return {"status": "ok", "message": "Database imported. A container restart is recommended to fully re-sync background engines."}
+
+
+@router.post("/reset")
+async def reset_database():
+    """WebGUI「システム設定」の「初期化」: AliasNode/Device/Connector/Sender、
+    RDS設定、Real Senderキャッシュ等を全て削除する。
+
+    WebGUIの待受ポート設定(SystemSettings)は、この操作で接続不能になるのを
+    避けるため保持する。
+    """
+    db = get_session()
+    try:
+        settings_row = db.query(models.SystemSettings).first()
+        preserved_web_port = settings_row.web_port if settings_row else settings.web_port
+    finally:
+        db.close()
+
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    db = get_session()
+    try:
+        db.add(models.SystemSettings(web_port=preserved_web_port))
+        db.commit()
+    finally:
+        db.close()
+
+    # バックグラウンドエンジンのインメモリ状態も合わせて初期化する
+    registration_engine.zone_status.clear()
+    registration_engine.engine._registered_sender_ids.clear()
+    registration_engine.engine._last_sent_version.clear()
+    nmos_resources._version_cache.clear()
+    same_zone_sync.status = same_zone_sync.SameZoneStatus()
+    await node_port_manager.sync()
+
+    logger.warning("System reset: all AliasNode/Device/Connector/Sender/RDS configuration has been deleted")
+    return {"status": "ok", "message": "Database has been reset. The WebGUI port setting was preserved."}
+
+
+@router.get("/logs")
+def get_logs(lines: int = 100):
+    """WebGUI「システム設定」の「ログ表示」: 最新N件のログ行を返す(NFR-03)。"""
+    log_path = Path(settings.log_dir) / "app.log"
+    if not log_path.is_file():
+        return {"lines": []}
+    all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return {"lines": all_lines[-lines:]}
+
+
+@router.get("/logs/download")
+def download_logs():
+    log_path = Path(settings.log_dir) / "app.log"
+    return FileResponse(path=log_path, filename="app.log", media_type="text/plain")

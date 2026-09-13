@@ -161,6 +161,7 @@ class AliasSenderOut(BaseModel):
     id: str
     connector_id: str
     real_sender_id: str
+    real_sender_label: str
     label: str
     description: str
     media_type: MediaType

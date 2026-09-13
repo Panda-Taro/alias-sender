@@ -72,6 +72,7 @@ export function AliasSendersView() {
   return (
     <div className="space-y-3">
       <Panel title="Alias Sender作成">
+        <div className="max-h-[50vh] overflow-y-auto pr-1">
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <select
             className="bg-appbg border border-border rounded px-2 py-1"
@@ -154,9 +155,10 @@ export function AliasSendersView() {
             ))}
           </tbody>
         </table>
+        </div>
 
         <button
-          className="bg-accent px-3 py-1 rounded text-white"
+          className="bg-accent px-3 py-1 rounded text-white mt-2"
           onClick={create}
           disabled={!form.connector_id || !form.real_sender_id}
         >
@@ -170,6 +172,7 @@ export function AliasSendersView() {
             <tr>
               <th>状態</th>
               <th>Label</th>
+              <th>Real Senderラベル</th>
               <th>Connector</th>
               <th>media_type</th>
               <th>Description</th>
@@ -183,6 +186,7 @@ export function AliasSendersView() {
                   <StatusDot online={s.sync_status === "online"} />
                 </td>
                 <td>{s.label}</td>
+                <td>{s.real_sender_label}</td>
                 <td>
                   <select
                     className="bg-appbg border border-border rounded px-1"

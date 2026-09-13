@@ -140,6 +140,11 @@ class AliasSender(Base):
         back_populates="alias_sender", cascade="all, delete-orphan"
     )
 
+    @property
+    def real_sender_label(self) -> str:
+        """紐付け元Real Senderのラベル(WebGUI表示用, REQ-H03/H07)。"""
+        return self.real_sender.nmos_sender_label if self.real_sender else ""
+
 
 class AliasSenderRegistration(Base):
     """AliasSenderの他ゾーンRDS登録状態 (⑩-7)"""

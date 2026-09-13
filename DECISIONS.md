@@ -217,6 +217,33 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   し、生成するDeviceリソースがスキーマに準拠していることをテストで検証する
   ようにした。`/sources/{id}`(REQ-F03)は元から実装済みだったため変更なし。
 
+## システム設定「初期化」「ログ表示」の追加、GUI表記統一 (運用フィードバック
+   対応)
+- 「初期化」(`POST /api/system/reset`)は、`Base.metadata.drop_all`→
+  `create_all`でスキーマを再作成し、WebGUIポート設定(SystemSettings)のみ
+  保持する。ハンドラ内に`await`が入るのは`node_port_manager.sync()`の
+  1箇所のみで、DBの削除/再作成/再挿入は同期処理のまま完了するため、
+  バックグラウンドの同期エンジンが再作成途中のテーブルに触れてしまう
+  競合は発生しない。
+- 「ログ表示」(`GET /api/system/logs?lines=100`, `GET
+  /api/system/logs/download`)は、`logs/app.log`をそのまま読んで末尾N行を
+  返す/ファイルごとダウンロードさせる素朴な実装(ログローテーション済みの
+  過去ファイルは対象外)。
+- WebGUI全体で「AliasNode」のようなスペース無し表記が散見されていたのを
+  「Alias Node」に統一。全角大文字("ALIAS ...")の表記は元々存在しなかった。
+- AliasSender.real_sender_label(プロパティ、Real Senderのラベルを参照専用
+  で公開)を追加し、ダッシュボードとAlias Sender一覧に表示できるようにした。
+- 「映像音声アンシラリの属性がNMOSコントローラーに広告されていない」という
+  報告について: 現行実装は`AliasSender.media_type`を`Source.format`
+  (video/audio/data)と`Flow.media_type`(video/raw, audio/LxxまたはNMOSの
+  IANA媒体タイプ, video/smpte291)の両方に正しく反映済みであることを
+  `tests/test_nmos_schema_compliance.py`で確認済み。NMOS仕様上「ancillary」
+  という独立したformat値は存在せず、ST2110-40アンシラリは
+  `format:data`+`media_type:video/smpte291`という組み合わせで表現するのが
+  正しい(そのためNMOSコントローラーのUIでは映像/音声/アンシラリが同じ
+  「data」アイコンで見える場合があるが、これは実装の不備ではなく仕様通り)。
+  この理解に基づき、本件はバックエンドのNMOS広告ロジックを変更していない。
+
 ## Alias Connector更新APIのリクエスト形式変更
 - `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を
