@@ -79,3 +79,48 @@ async def test_unchanged_resources_are_not_reposted_on_next_tick(db_session, sce
 
     assert register_mock.call_count == 0
     assert heartbeat_mock.call_count == 2  # once per tick
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_failure_forces_full_resync_on_next_tick(db_session, scenario, monkeypatch):
+    """実運用で観測された不具合の回帰テスト。
+
+    RDSが再起動する等でNodeの登録を失った場合、ハートビートは404で
+    失敗し続ける。以前はresource POSTのキャッシュが破棄されず、
+    heartbeatの再試行だけが延々と繰り返され、他ゾーンRDSへの接続が
+    復旧しなかった。ハートビート失敗後の次のtickでは、node/device/
+    source/flow/senderが無条件に再POSTされ、自己修復されなければならない。
+    """
+    zone_config, _alias_sender = scenario
+
+    register_mock = AsyncMock()
+    monkeypatch.setattr("app.services.registration_client.NmosRegistrationClient.register_resource", register_mock)
+
+    engine = RegistrationEngine()
+
+    # 1回目: 正常に全リソースを登録
+    monkeypatch.setattr(
+        "app.services.registration_client.NmosRegistrationClient.heartbeat", AsyncMock()
+    )
+    await engine._sync_one(db_session, zone_config)
+    db_session.commit()
+    assert register_mock.call_count == 5
+
+    # 2回目: RDSがNodeを見失いheartbeatが404で失敗する
+    register_mock.reset_mock()
+    monkeypatch.setattr(
+        "app.services.registration_client.NmosRegistrationClient.heartbeat",
+        AsyncMock(side_effect=RuntimeError("HTTP 404: Not Found")),
+    )
+    await engine._sync_one(db_session, zone_config)
+    db_session.commit()
+    assert register_mock.call_count == 0  # 変化なしのため、この時点ではまだ再POSTしない
+
+    # 3回目: heartbeat失敗を受けて、次のtickでは全リソースが再POSTされる
+    register_mock.reset_mock()
+    monkeypatch.setattr(
+        "app.services.registration_client.NmosRegistrationClient.heartbeat", AsyncMock()
+    )
+    await engine._sync_one(db_session, zone_config)
+    db_session.commit()
+    assert register_mock.call_count == 5

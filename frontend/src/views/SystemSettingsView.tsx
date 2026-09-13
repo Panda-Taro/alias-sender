@@ -110,6 +110,12 @@ export function SystemSettingsView() {
         </div>
       </Panel>
 
+      <Panel title="OS情報">
+        <div>IPアドレス: {systemInfo.data?.os_ip_addresses.join(", ")}</div>
+        <div>Node APIポート開始番号: {systemInfo.data?.node_api_port_start}</div>
+        <div className="text-gray-500 mt-2">※ 参照専用。本システムからの設定変更は行いません。</div>
+      </Panel>
+
       <Panel
         title="ログ表示"
         action={
@@ -126,16 +132,10 @@ export function SystemSettingsView() {
           </div>
         }
       >
-        <pre className="bg-appbg border border-border rounded p-2 text-[11px] max-h-96 overflow-y-auto whitespace-pre-wrap">
-          {logs.data?.lines.join("\n") || "(ログがありません)"}
+        <pre className="bg-appbg border border-border rounded p-2 text-[11px] max-h-20 overflow-y-auto whitespace-pre-wrap">
+          {logs.data?.lines.length ? [...logs.data.lines].reverse().join("\n") : "(ログがありません)"}
         </pre>
-        <div className="text-gray-500 mt-2">※ 最新100件を表示します。</div>
-      </Panel>
-
-      <Panel title="OS情報">
-        <div>IPアドレス: {systemInfo.data?.os_ip_addresses.join(", ")}</div>
-        <div>Node APIポート開始番号: {systemInfo.data?.node_api_port_start}</div>
-        <div className="text-gray-500 mt-2">※ 参照専用。本システムからの設定変更は行いません。</div>
+        <div className="text-gray-500 mt-2">※ 最新100件を新しい順で表示します。</div>
       </Panel>
     </div>
   );

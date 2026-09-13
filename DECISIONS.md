@@ -244,6 +244,22 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   「data」アイコンで見える場合があるが、これは実装の不備ではなく仕様通り)。
   この理解に基づき、本件はバックエンドのNMOS広告ロジックを変更していない。
 
+## ハートビート404後に永久に復旧しなくなる不具合 (重大, 運用フィードバック
+   対応)
+- 直前の「不変リソースの再POST抑制」の変更により、他ゾーンRDSが何らかの
+  理由(RDS再起動等)でAliasNodeの登録を失った場合に、ハートビートが404で
+  失敗し続けたまま二度と復旧しない不具合が発生した。原因は
+  `_register_if_changed()`のキャッシュ(`_last_sent_version`)が、RDS側の
+  実際の状態を検証せず「前回自分が送った内容と同じかどうか」だけで
+  再POSTの要否を判断していたため。ハートビートが404になっても、内容が
+  変化していない限りnode/device/source/flow/senderのPOSTが再送されず、
+  ハートビートの再試行だけが5秒おきに永久に繰り返されていた。
+- `_sync_one`のハートビート失敗時の例外処理で、該当zone_rds_config_idの
+  `_last_sent_version`と`_registered_sender_ids`キャッシュを破棄するように
+  修正した。これにより次のtick(5秒後)で全リソースが無条件に再POSTされ、
+  RDS側の登録が復旧する。回帰テスト
+  (`test_heartbeat_failure_forces_full_resync_on_next_tick`)を追加。
+
 ## Alias Connector更新APIのリクエスト形式変更
 - `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を

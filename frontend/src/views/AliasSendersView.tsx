@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type MediaType } from "../api";
+import { api, type AliasSender, type MediaType } from "../api";
 import { Panel } from "../components/Panel";
 import { StatusDot } from "../components/StatusDot";
 
@@ -41,32 +41,33 @@ export function AliasSendersView() {
     }
   };
 
-  const updateDescription = async (id: string, description: string) => {
-    await api.updateAliasSender(id, { description });
-    qc.invalidateQueries({ queryKey: ["alias-senders"] });
-  };
-
-  const updateMediaType = async (id: string, media_type: MediaType) => {
-    try {
-      await api.updateAliasSender(id, { media_type });
-      qc.invalidateQueries({ queryKey: ["alias-senders"] });
-    } catch (e) {
-      alert((e as Error).message);
-    }
-  };
-
-  const updateConnector = async (id: string, connector_id: string) => {
-    try {
-      await api.updateAliasSender(id, { connector_id });
-      qc.invalidateQueries({ queryKey: ["alias-senders"] });
-    } catch (e) {
-      alert((e as Error).message);
-    }
-  };
-
   const remove = async (id: string) => {
     await api.deleteAliasSender(id);
     qc.invalidateQueries({ queryKey: ["alias-senders"] });
+  };
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ connector_id: string; media_type: MediaType; description: string }>({
+    connector_id: "",
+    media_type: "video",
+    description: "",
+  });
+
+  const startEdit = (s: AliasSender) => {
+    setEditingId(s.id);
+    setEditForm({ connector_id: s.connector_id, media_type: s.media_type, description: s.description });
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const saveEdit = async (id: string) => {
+    try {
+      await api.updateAliasSender(id, editForm);
+      qc.invalidateQueries({ queryKey: ["alias-senders"] });
+      setEditingId(null);
+    } catch (e) {
+      alert((e as Error).message);
+    }
   };
 
   return (
@@ -180,53 +181,82 @@ export function AliasSendersView() {
             </tr>
           </thead>
           <tbody>
-            {aliasSenders.data?.map((s) => (
-              <tr key={s.id} className="border-t border-border">
-                <td className="py-1">
-                  <StatusDot online={s.sync_status === "online"} />
-                </td>
-                <td>{s.label}</td>
-                <td>{s.real_sender_label}</td>
-                <td>
-                  <select
-                    className="bg-appbg border border-border rounded px-1"
-                    value={s.connector_id}
-                    onChange={(e) => updateConnector(s.id, e.target.value)}
-                  >
-                    {connectors.data?.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {devices.data?.find((d) => d.id === c.device_id)?.alias_device_label} / {c.connector_label}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <select
-                    className="bg-appbg border border-border rounded px-1"
-                    value={s.media_type}
-                    onChange={(e) => updateMediaType(s.id, e.target.value as MediaType)}
-                  >
-                    {MEDIA_TYPES.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <input
-                    className="bg-appbg border border-border rounded px-1 w-full"
-                    defaultValue={s.description}
-                    onBlur={(e) => updateDescription(s.id, e.target.value)}
-                  />
-                </td>
-                <td>
-                  <button className="text-offline" onClick={() => remove(s.id)}>
-                    削除
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {aliasSenders.data?.map((s) => {
+              const isEditing = editingId === s.id;
+              return (
+                <tr key={s.id} className="border-t border-border">
+                  <td className="py-1">
+                    <StatusDot online={s.sync_status === "online"} />
+                  </td>
+                  <td>{s.label}</td>
+                  <td>{s.real_sender_label}</td>
+                  {isEditing ? (
+                    <>
+                      <td>
+                        <select
+                          className="bg-appbg border border-border rounded px-1"
+                          value={editForm.connector_id}
+                          onChange={(e) => setEditForm({ ...editForm, connector_id: e.target.value })}
+                        >
+                          {connectors.data?.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {devices.data?.find((d) => d.id === c.device_id)?.alias_device_label} /{" "}
+                              {c.connector_label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          className="bg-appbg border border-border rounded px-1"
+                          value={editForm.media_type}
+                          onChange={(e) => setEditForm({ ...editForm, media_type: e.target.value as MediaType })}
+                        >
+                          {MEDIA_TYPES.map((m) => (
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          className="bg-appbg border border-border rounded px-1 w-full"
+                          value={editForm.description}
+                          onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                        />
+                      </td>
+                      <td className="flex gap-2">
+                        <button className="text-accent" onClick={() => saveEdit(s.id)}>
+                          保存
+                        </button>
+                        <button className="text-gray-400" onClick={cancelEdit}>
+                          取消
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td>
+                        {devices.data?.find((d) => d.id === connectors.data?.find((c) => c.id === s.connector_id)?.device_id)
+                          ?.alias_device_label}{" "}
+                        / {connectors.data?.find((c) => c.id === s.connector_id)?.connector_label}
+                      </td>
+                      <td>{s.media_type}</td>
+                      <td>{s.description}</td>
+                      <td className="flex gap-2">
+                        <button className="text-accent" onClick={() => startEdit(s)}>
+                          編集
+                        </button>
+                        <button className="text-offline" onClick={() => remove(s.id)}>
+                          削除
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Panel>

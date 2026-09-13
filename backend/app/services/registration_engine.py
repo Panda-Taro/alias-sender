@@ -237,6 +237,16 @@ class RegistrationEngine:
             st.last_error = "; ".join(errors)
             logger.warning("Heartbeat failed for zone RDS %s: %s", config.id, exc)
 
+            # ハートビートの失敗(特に404)は、RDS側が再起動等で当該Nodeの登録を
+            # 失った/知らないことを意味する。このまま_register_if_changed()の
+            # キャッシュを保持し続けると、内容が変わらない限り二度と
+            # POST /resourceを再送しないため、無限に404を繰り返して復旧
+            # しなくなってしまう(実運用で確認された不具合)。キャッシュを
+            # 破棄し、次のtickでnode/device/source/flow/senderを無条件に
+            # 再POSTして自己修復させる。
+            self._last_sent_version.pop(config.id, None)
+            self._registered_sender_ids.pop(config.id, None)
+
     @staticmethod
     def _get_or_create_registration(db, alias_sender_id: str, zone_rds_config_id: str) -> models.AliasSenderRegistration:
         reg = (
