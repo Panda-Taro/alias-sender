@@ -11,6 +11,8 @@ services:
       - ALIAS_NODE_API_PORT_START=10080
       - ALIAS_DB_PATH=/app/data/alias_sender.db
       - ALIAS_LOG_DIR=/app/logs
+      # ログのタイムゾーン。OSと異なる場合はここを変更する(既定: Asia/Tokyo)
+      - TZ=Asia/Tokyo
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs

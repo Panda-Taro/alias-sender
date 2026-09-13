@@ -260,6 +260,18 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   RDS側の登録が復旧する。回帰テスト
   (`test_heartbeat_failure_forces_full_resync_on_next_tick`)を追加。
 
+## ログのタイムゾーンがUTCになっていた (運用フィードバック対応)
+- `logging.Formatter`の`asctime`はOSのローカルタイムを使うが、`python:3.11-
+  slim`ベースのDockerコンテナは既定でタイムゾーンがUTCであり、ホストOSが
+  JSTであってもコンテナ内は関係なくUTCで動く。`TZ`環境変数を設定しても
+  `tzdata`パッケージ(zoneinfoデータベース)がインストールされていなければ
+  反映されない。
+- Dockerfileに`tzdata`のインストールと`ENV TZ=Asia/Tokyo`を追加、
+  docker-compose.ymlでも`TZ`を環境変数として明示し、運用環境のタイムゾーン
+  が異なる場合はそこを変更すれば良いようにした。DB上のタイムスタンプ
+  (`created_at`等)は元よりUTCで保持する設計のままで、ログの表示時刻のみを
+  対象とする。
+
 ## Alias Connector更新APIのリクエスト形式変更
 - `PUT /api/alias-connectors/{id}`は当初`connector_label`をクエリパラメータ
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を

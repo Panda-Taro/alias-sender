@@ -43,6 +43,7 @@ WebGUIにアクセスできます。
 | `ALIAS_NODE_API_PORT_START` | `10080` | AliasNode作成時の推奨開始ポート番号(GUI上の初期値目安) |
 | `ALIAS_DB_PATH` | `/app/data/alias_sender.db` | SQLiteファイルパス |
 | `ALIAS_LOG_DIR` | `/app/logs` | ログ出力先 |
+| `TZ` | `Asia/Tokyo` | ログのタイムスタンプのタイムゾーン。OSと異なる場合は変更する |
 | `ALIAS_HEARTBEAT_INTERVAL_SECONDS` | `5.0` | Registration APIハートビート間隔 |
 | `ALIAS_QUERY_POLL_INTERVAL_SECONDS` | `30.0` | 同一ゾーンRDS Query APIのポーリング間隔(WebSocket補完用) |
 
