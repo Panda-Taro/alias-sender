@@ -212,6 +212,7 @@ class ZoneRdsConfig(Base):
     registration_ip_address: Mapped[str] = mapped_column(String(64), nullable=True, default="")
     registration_port: Mapped[int] = mapped_column(Integer, nullable=True)
     registration_api_version: Mapped[str] = mapped_column(String(16), nullable=True, default="v1.3")
+    registration_source_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     node: Mapped[AliasNode] = relationship(back_populates="zone_rds_configs")
     sender_registrations: Mapped[list[AliasSenderRegistration]] = relationship(

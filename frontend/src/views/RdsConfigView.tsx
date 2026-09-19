@@ -23,12 +23,13 @@ export function RdsConfigView() {
     if (sameZone.data) setSz(sameZone.data);
   }, [sameZone.data]);
 
-  const [newZone, setNewZone] = useState({
+  const [newZone, setNewZone] = useState<Omit<ZoneRdsConfig, "id" | "connection_status">>({
     node_id: "",
     registration_api_enabled: true,
     registration_ip_address: "",
     registration_port: 8010,
     registration_api_version: "v1.3",
+    registration_source_port: null,
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -56,6 +57,7 @@ export function RdsConfigView() {
       registration_ip_address: z.registration_ip_address,
       registration_port: z.registration_port,
       registration_api_version: z.registration_api_version,
+      registration_source_port: z.registration_source_port,
     });
   };
 
@@ -163,6 +165,15 @@ export function RdsConfigView() {
               </option>
             ))}
           </select>
+          <input
+            type="number"
+            className="bg-appbg border border-border rounded px-2 py-1 w-28"
+            placeholder="送信元ポート(任意)"
+            value={newZone.registration_source_port ?? ""}
+            onChange={(e) =>
+              setNewZone({ ...newZone, registration_source_port: e.target.value === "" ? null : Number(e.target.value) })
+            }
+          />
           <button className="bg-accent px-3 py-1 rounded text-white" onClick={addZoneConfig} disabled={!newZone.node_id}>
             追加
           </button>
@@ -175,6 +186,7 @@ export function RdsConfigView() {
               <th>Alias Node</th>
               <th>IP:Port</th>
               <th>Ver</th>
+              <th>送信元Port</th>
               <th>Sender登録数</th>
               <th />
             </tr>
@@ -229,6 +241,20 @@ export function RdsConfigView() {
                           ))}
                         </select>
                       </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="bg-appbg border border-border rounded px-1 w-20"
+                          placeholder="任意"
+                          value={editForm.registration_source_port ?? ""}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              registration_source_port: e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </td>
                       <td>-</td>
                       <td className="flex gap-2">
                         <button className="text-accent" onClick={saveEdit}>
@@ -249,6 +275,7 @@ export function RdsConfigView() {
                         {z.registration_ip_address}:{z.registration_port}
                       </td>
                       <td>{z.registration_api_version}</td>
+                      <td>{z.registration_source_port ?? "-"}</td>
                       <td>
                         {detail ? `${detail.senders_ok}/${detail.senders_total}` : "-"}
                       </td>

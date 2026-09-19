@@ -53,6 +53,7 @@ export interface ZoneRdsConfig {
   registration_ip_address: string;
   registration_port: number;
   registration_api_version: string;
+  registration_source_port: number | null;
   connection_status: OnlineOffline;
 }
 

@@ -73,6 +73,7 @@ class ZoneRdsConfigIn(BaseModel):
     registration_ip_address: str
     registration_port: int
     registration_api_version: str = "v1.3"
+    registration_source_port: Optional[int] = None
 
 
 class ZoneRdsConfigOut(BaseModel):
@@ -84,6 +85,7 @@ class ZoneRdsConfigOut(BaseModel):
     registration_ip_address: str
     registration_port: int
     registration_api_version: str
+    registration_source_port: Optional[int] = None
     connection_status: OnlineOffline = "offline"
 
 

@@ -4,6 +4,8 @@
 AliasNode単位で複数)を管理する。
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,7 +15,44 @@ from app.db.database import get_db
 from app.schemas import domain
 from app.services import registration_engine, same_zone_sync
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["rds-config"])
+
+MIN_SOURCE_PORT = 1024
+MAX_SOURCE_PORT = 65535
+
+
+def _validate_source_port(db: Session, source_port: int | None, exclude_id: str | None = None) -> None:
+    """registration_source_port(REQ-E07)の範囲チェックと重複チェックを行う。
+
+    重複チェックは、登録先(registration_ip_address)が設定済みの有効な
+    ZoneRdsConfig全件を対象とする。
+    """
+    if source_port is None:
+        return
+    if not (MIN_SOURCE_PORT <= source_port <= MAX_SOURCE_PORT):
+        logger.warning("Rejected registration_source_port %s: out of range", source_port)
+        raise HTTPException(
+            status_code=400,
+            detail=f"送信元ポート番号は{MIN_SOURCE_PORT}〜{MAX_SOURCE_PORT}の範囲で指定してください",
+        )
+
+    query = db.query(models.ZoneRdsConfig).filter(
+        models.ZoneRdsConfig.registration_source_port == source_port,
+        models.ZoneRdsConfig.registration_ip_address != "",
+    )
+    if exclude_id is not None:
+        query = query.filter(models.ZoneRdsConfig.id != exclude_id)
+    conflict = query.first()
+    if conflict is not None:
+        logger.warning(
+            "Rejected registration_source_port %s: already used by ZoneRdsConfig %s", source_port, conflict.id
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"送信元ポート {source_port} は既に他のRDS設定で使用されています",
+        )
 
 
 @router.get("/same-zone-rds", response_model=domain.SameZoneRdsConfigOut)
@@ -63,6 +102,7 @@ def create_zone_rds_config(payload: domain.ZoneRdsConfigIn, db: Session = Depend
     node = db.get(models.AliasNode, payload.node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="AliasNode not found")
+    _validate_source_port(db, payload.registration_source_port)
 
     config = models.ZoneRdsConfig(**payload.model_dump())
     db.add(config)
@@ -82,6 +122,7 @@ def update_zone_rds_config(config_id: str, payload: domain.ZoneRdsConfigIn, db: 
     config = db.get(models.ZoneRdsConfig, config_id)
     if config is None:
         raise HTTPException(status_code=404, detail="ZoneRdsConfig not found")
+    _validate_source_port(db, payload.registration_source_port, exclude_id=config_id)
     for field, value in payload.model_dump().items():
         setattr(config, field, value)
     try:

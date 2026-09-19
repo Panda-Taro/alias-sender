@@ -122,7 +122,10 @@ class RegistrationEngine:
             return
 
         client = NmosRegistrationClient(
-            config.registration_ip_address, config.registration_port, config.registration_api_version
+            config.registration_ip_address,
+            config.registration_port,
+            config.registration_api_version,
+            source_port=config.registration_source_port,
         )
         host = get_primary_ip()
         port = scope.node.node_api_port or settings.node_api_port_start
