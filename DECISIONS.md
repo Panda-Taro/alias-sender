@@ -277,3 +277,35 @@ Source/Flow/Senderリソースを実際のAMWA IS-04 v1.3 schemaに対して
   として受け取っていたが、他の更新APIと一貫させ、WebGUI全体に「編集」操作を
   設けるにあたりフロントエンドの実装を統一するため、JSONボディ
   (`{"connector_label": "..."}`)を受け取る形式に変更した。
+
+## 正常なReal Senderが一時的にofflineへ誤検知される不具合 (バグ報告対応)
+- 症状: 実際には正常稼働しているReal SenderがWebGUI上で一時的に赤(offline)
+  になる。同一ゾーンRDSに登録されているSender数が数十件以上ある環境で発生。
+- 原因1(主因): `NmosQueryClient._get_list()`がIS-04 Query APIの
+  ページネーション(`Link`ヘッダ, RFC5988)に未対応で、単発の`GET /senders`
+  (`/devices`も同様)しか投げていなかった。RDS側の既定ページ上限を登録数が
+  超えると200 OKのまま一部しか返らず、`same_zone_sync.reconcile()`の
+  「今回のレスポンスに含まれないSenderはoffline化する」(REQ-A06)ロジックが、
+  実際には健全なのにたまたま別ページに乗っただけのSenderを誤ってoffline化
+  していた。次のpoll(既定30秒間隔)で別ページ構成になれば`was_offline`分岐で
+  online復帰するため、「一時的に赤くなって自然に治る」という症状と一致する。
+  `_get_list()`に`rel="next"`を無くなるまで辿る全件取得を実装して解消した
+  (`_next_page_url`, 回帰テスト`test_nmos_query_client.py`)。
+- 原因2(保険的対策): 定期poll(`_poll_loop`)とQuery API側WebSocket
+  Subscription通知トリガー(`_ws_loop`)の両方が同一の`_tick()`を独立した
+  DBセッションで呼び出せる構造になっており、通知が短時間に連続すると
+  `reconcile()`が重複実行され、互いの書き込みを競合させる余地があった。
+  `SameZoneSyncEngine`に`asyncio.Lock`を追加し、実行中は後続の呼び出しを
+  スキップする(次のtickで改めて反映されるため取りこぼしにはならない)ように
+  した。
+- 追加要望対応: 上記の誤検知に関わらず、これまではAlias Senderに紐づく
+  Real Senderがofflineになった瞬間、`registration_engine._sync_one()`が
+  他ゾーンRDS側のsender/flow/sourceリソースを即座にDELETEしており、
+  「一時的にせよRDSからAlias Sender自体が見えなくなる」問題があった。
+  ユーザー要望により、Real Senderのsync_status(online/offline)を他ゾーン
+  RDSへの登録可否の判定に使わないよう変更し、Alias Senderがスコープに
+  存在する限り常時登録・ハートビートを継続する(REQ-E04/E05相当の挙動を
+  変更)。あわせて、Senderリソースの`subscription.active`もsync_statusに
+  連動させず常に`true`として広告するようにした(`resources.py`)。実際の
+  有効/無効はConnection API(`master_enable`)側の状態に委ねる。
+  回帰テスト`test_offline_real_sender_keeps_alias_sender_advertised`を追加。

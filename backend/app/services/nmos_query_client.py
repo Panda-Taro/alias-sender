@@ -53,7 +53,37 @@ class NmosQueryClient:
             return resp.json()
 
     async def _get_list(self, path: str) -> list[dict]:
+        """IS-04 Query APIのページネーション(`Link`ヘッダ, RFC5988)に対応した全件取得。
+
+        RDS上の登録件数がページ上限を超えると1回のGETでは一部しか返らず、
+        たまたまそのtickで漏れたリソースを「消失した」と誤検知してしまう
+        (同一ゾーンRDS連携でReal Senderが実際は正常なのに一時的にofflineへ
+        倒れる不具合の原因だった)。`rel="next"`を無くなるまで辿って全件を
+        結合する。
+        """
+        results: list[dict] = []
+        url: str | None = f"{self.base_url}{path}"
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.get(f"{self.base_url}{path}")
-            resp.raise_for_status()
-            return resp.json()
+            while url:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                results.extend(resp.json())
+                url = _next_page_url(resp.headers.get("Link"))
+        return results
+
+
+def _next_page_url(link_header: str | None) -> str | None:
+    """`Link`ヘッダから`rel="next"`のURLを取り出す。無ければNone。"""
+    if not link_header:
+        return None
+    for part in link_header.split(","):
+        segments = part.split(";")
+        if len(segments) < 2:
+            continue
+        url = segments[0].strip()
+        if not (url.startswith("<") and url.endswith(">")):
+            continue
+        params = [seg.strip() for seg in segments[1:]]
+        if any(p in ('rel="next"', "rel=next") for p in params):
+            return url[1:-1]
+    return None

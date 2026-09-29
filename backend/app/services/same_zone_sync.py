@@ -41,6 +41,7 @@ class SameZoneSyncEngine:
         self._poll_task: asyncio.Task | None = None
         self._ws_task: asyncio.Task | None = None
         self._stopping = False
+        self._tick_lock = asyncio.Lock()
 
     async def start(self) -> None:
         self._stopping = False
@@ -63,6 +64,19 @@ class SameZoneSyncEngine:
             await asyncio.sleep(settings.query_poll_interval_seconds)
 
     async def _tick(self) -> None:
+        """定期pollとWS通知トリガーの両方から呼ばれうるため、多重実行を防ぐ。
+
+        両者が同時に走ると別々のDBセッションでreconcileが競合し、片方の
+        古いスナップショットでの判定がもう片方の結果を上書きして、正常な
+        Real Senderが一時的にofflineへ倒れる要因になり得るため、実行中は
+        後続の呼び出しをスキップする(次のtickで改めて反映される)。
+        """
+        if self._tick_lock.locked():
+            return
+        async with self._tick_lock:
+            await self._do_tick()
+
+    async def _do_tick(self) -> None:
         db = get_session()
         try:
             config = db.query(models.SameZoneRdsConfig).first()

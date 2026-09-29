@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.db import models
-from app.services.alias_sender_logic import create_alias_sender
+from app.services.alias_sender_logic import create_alias_sender, set_real_sender_offline
 from app.services.registration_engine import RegistrationEngine
 
 
@@ -124,3 +124,46 @@ async def test_heartbeat_failure_forces_full_resync_on_next_tick(db_session, sce
     await engine._sync_one(db_session, zone_config)
     db_session.commit()
     assert register_mock.call_count == 5
+
+
+@pytest.mark.asyncio
+async def test_offline_real_sender_keeps_alias_sender_advertised(db_session, scenario, monkeypatch):
+    """バグ報告対応の回帰テスト。
+
+    紐づくReal Senderがofflineになっても、Alias Senderは他ゾーンRDSへの
+    広告(登録)を取り下げてはならない(DELETEしてはならない)。以前は
+    sync_status=="offline"を検知すると即座にsender/flow/sourceをDELETEして
+    いたため、Real Senderが一時的に見えなくなっただけで他システムから
+    Alias Sender自体が消えてしまっていた。
+    """
+    zone_config, alias_sender = scenario
+
+    register_mock = AsyncMock()
+    delete_mock = AsyncMock()
+    monkeypatch.setattr("app.services.registration_client.NmosRegistrationClient.register_resource", register_mock)
+    monkeypatch.setattr("app.services.registration_client.NmosRegistrationClient.delete_resource", delete_mock)
+    monkeypatch.setattr("app.services.registration_client.NmosRegistrationClient.heartbeat", AsyncMock())
+
+    engine = RegistrationEngine()
+    await engine._sync_one(db_session, zone_config)
+    db_session.commit()
+    assert register_mock.call_count == 5  # node, device, source, flow, sender
+
+    real_sender = db_session.get(models.RealSender, alias_sender.real_sender_id)
+    set_real_sender_offline(db_session, real_sender)
+    db_session.commit()
+
+    register_mock.reset_mock()
+    await engine._sync_one(db_session, zone_config)
+    db_session.commit()
+
+    delete_mock.assert_not_called()
+    reg = (
+        db_session.query(models.AliasSenderRegistration)
+        .filter(
+            models.AliasSenderRegistration.alias_sender_id == alias_sender.id,
+            models.AliasSenderRegistration.zone_rds_config_id == zone_config.id,
+        )
+        .first()
+    )
+    assert reg.registration_status == "online"

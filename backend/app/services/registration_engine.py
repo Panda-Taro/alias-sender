@@ -3,8 +3,11 @@
 AliasNode単位でZoneRdsConfigごとに以下を行う:
   - スコープ内(NodeDeviceAssignment経由)のDevice/Connector/Sender/Sourceを
     node/device/source/senderリソースとして登録する
-  - AliasSender.sync_statusがonlineのものだけを有効な登録として維持し、
-    offlineになったものはDELETEで登録解除する(REQ-E04/E05)
+  - AliasSenderはReal Sender側のsync_status(online/offline)に関わらず、
+    スコープに存在する限り常時登録・ハートビートを継続する。紐づく
+    Real Senderが一時的にofflineになっただけで他ゾーンRDSから広告を
+    取り下げてしまうと、他システム側からAlias Senderそのものが見えなく
+    なってしまうため(バグ報告対応)。
   - 5秒間隔でハートビートを送信し続ける(REQ-E03)
 """
 
@@ -170,24 +173,9 @@ class RegistrationEngine:
                 senders_total += 1
                 reg = self._get_or_create_registration(db, alias_sender.id, config.id)
 
-                if alias_sender.sync_status != "online":
-                    if alias_sender.id in currently_registered:
-                        for rtype, rid in (
-                            ("sender", alias_sender.id),
-                            ("flow", resources.derive_flow_id(alias_sender.source_id)),
-                            ("source", alias_sender.source_id),
-                        ):
-                            try:
-                                await client.delete_resource(rtype, rid)
-                            except Exception as exc:  # noqa: BLE001
-                                logger.warning(
-                                    "Deregistration failed (zone RDS %s, %s %s): %s", config.id, rtype, rid, exc
-                                )
-                            self._forget_sent_version(config.id, rtype, rid)
-                        currently_registered.discard(alias_sender.id)
-                    reg.registration_status = "offline"
-                    senders_ok += 1  # 意図的にoffline: エラーではない
-                    continue
+                # Real Senderのsync_status(online/offline)は判定材料にしない。
+                # 紐づくReal Senderが一時的にofflineでも、Alias Senderの登録
+                # 自体は他ゾーンRDSへ広告し続ける(バグ報告対応)。
 
                 # source/flow/sourceは互いに参照するため、1つでも失敗すれば
                 # このAliasSenderはonline扱いにしないが、どの資源で失敗した

@@ -210,7 +210,10 @@ def build_sender_resource(
         "description": alias_sender.description or "",
         "flow_id": derive_flow_id(alias_sender.source_id),
         "device_id": device_id,
-        "active": alias_sender.sync_status == "online",
+        # 紐づくReal Senderのsync_statusには連動させない。他システムからは
+        # 常にactiveなSenderとして見せ、実際の有効/無効はConnection API
+        # (master_enable)側の状態に委ねる(バグ報告対応)。
+        "active": True,
     }
     return {
         "id": alias_sender.id,
