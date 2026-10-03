@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class NmosQueryClient:
+    # RDS既定のページサイズ(観測値: 10件)でページングさせると、一部のRDS実装では
+    # 2ページ目以降の`paging.since`カーソルが進まず全件を辿りきれないため、
+    # 最初から大きめのlimitを明示指定して可能な限り1ページで完結させる。
+    DEFAULT_PAGE_LIMIT = 1000
+
     def __init__(self, ip_address: str, port: int, version: str = "v1.3", timeout: float = 5.0):
         self.base_url = f"http://{ip_address}:{port}/x-nmos/query/{version}"
         self.timeout = timeout
@@ -66,7 +71,7 @@ class NmosQueryClient:
         ロックを永久に塞いでしまう。一度訪れたURLに戻ってきたら打ち切る。
         """
         results: list[dict] = []
-        url: str | None = f"{self.base_url}{path}"
+        url: str | None = f"{self.base_url}{path}?paging.limit={self.DEFAULT_PAGE_LIMIT}"
         seen_urls: set[str] = set()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             while url and url not in seen_urls:

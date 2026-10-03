@@ -30,7 +30,7 @@ def test_next_page_url_none_when_no_header():
 
 @pytest.mark.asyncio
 async def test_get_senders_follows_pagination(monkeypatch):
-    page1_url = "http://10.0.0.1:3210/x-nmos/query/v1.3/senders"
+    page1_url = "http://10.0.0.1:3210/x-nmos/query/v1.3/senders?paging.limit=1000"
     page2_url = "http://10.0.0.1:3210/x-nmos/query/v1.3/senders?paging.since=1"
 
     def handler(request: httpx.Request) -> httpx.Response:
