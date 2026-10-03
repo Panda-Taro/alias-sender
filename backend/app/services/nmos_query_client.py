@@ -60,11 +60,17 @@ class NmosQueryClient:
         (同一ゾーンRDS連携でReal Senderが実際は正常なのに一時的にofflineへ
         倒れる不具合の原因だった)。`rel="next"`を無くなるまで辿って全件を
         結合する。
+
+        RDS実装によっては、末尾ページでも`paging.since`カーソルが進まない
+        `rel="next"`を返し続けることがあり、素直に辿ると無限ループしてtick
+        ロックを永久に塞いでしまう。一度訪れたURLに戻ってきたら打ち切る。
         """
         results: list[dict] = []
         url: str | None = f"{self.base_url}{path}"
+        seen_urls: set[str] = set()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            while url:
+            while url and url not in seen_urls:
+                seen_urls.add(url)
                 resp = await client.get(url)
                 resp.raise_for_status()
                 results.extend(resp.json())
