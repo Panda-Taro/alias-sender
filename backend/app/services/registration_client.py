@@ -32,9 +32,13 @@ def _connect_with_source_port(host: str, port: int, source_port: int, timeout: f
 
     httpx/httpcoreは送信元IPアドレスの固定(local_address)には対応しているが、
     送信元ポート番号の固定には対応していないため、標準ライブラリのsocketで
-    低レベルに接続を確立する。ハートビート等で同じポートから短い間隔で
-    接続を繰り返すため、TIME_WAIT状態の影響を受けないようSO_REUSEADDRを
-    付与する。
+    低レベルに接続を確立する。送信元ポートが固定されていると
+    (送信元IP, 送信元ポート, 宛先IP, 宛先ポート)の4-tupleも固定されるため、
+    SO_REUSEADDRを付与してTIME_WAIT状態の同一4-tupleへの再接続を許容する。
+    ただし呼び出し側が毎回接続を閉じて張り直すと、SO_REUSEADDRをもってしても
+    直前の接続がTIME_WAIT状態から抜けきる前の再接続は`EADDRNOTAVAIL`
+    ([Errno 99] Cannot assign requested address)で失敗するため、
+    `NmosRegistrationClient`側で接続を使い回す必要がある。
     """
     last_exc: OSError | None = None
     for family, socktype, proto, _canonname, sockaddr in socket.getaddrinfo(
@@ -65,20 +69,6 @@ class _BoundHTTPConnection(http.client.HTTPConnection):
         self.sock = _connect_with_source_port(self.host, self.port, self._source_port, self.timeout)
 
 
-def _sync_request_with_source_port(
-    method: str, host: str, port: int, path: str, source_port: int, timeout: float, body: bytes | None
-) -> tuple[int, str]:
-    conn = _BoundHTTPConnection(host, port, source_port, timeout)
-    try:
-        headers = {"Content-Type": "application/json"} if body is not None else {}
-        conn.request(method, path, body=body, headers=headers)
-        resp = conn.getresponse()
-        text = resp.read().decode("utf-8", errors="replace")
-        return resp.status, text
-    finally:
-        conn.close()
-
-
 class NmosRegistrationClient:
     def __init__(
         self,
@@ -94,6 +84,7 @@ class NmosRegistrationClient:
         self.base_url = f"http://{ip_address}:{port}{self.path_prefix}"
         self.timeout = timeout
         self.source_port = source_port
+        self._conn: _BoundHTTPConnection | None = None
         if source_port is not None:
             logger.info(
                 "NmosRegistrationClient for %s:%s will bind to fixed source port %s (REQ-E07)",
@@ -102,23 +93,48 @@ class NmosRegistrationClient:
                 source_port,
             )
 
+    def close(self) -> None:
+        """固定送信元ポートの接続を明示的に閉じる(zone RDS設定変更時等)。"""
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except OSError:
+                pass
+            self._conn = None
+
     async def _request(self, method: str, path: str, json_body: dict | None = None) -> tuple[int, str]:
         if self.source_port is not None:
             body = json.dumps(json_body).encode("utf-8") if json_body is not None else None
-            return await asyncio.to_thread(
-                _sync_request_with_source_port,
-                method,
-                self.ip_address,
-                self.port,
-                path,
-                self.source_port,
-                self.timeout,
-                body,
-            )
+            return await asyncio.to_thread(self._sync_request_reusing_connection, method, path, body)
         url = f"http://{self.ip_address}:{self.port}{path}"
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.request(method, url, json=json_body)
             return resp.status_code, resp.text
+
+    def _sync_request_reusing_connection(self, method: str, path: str, body: bytes | None) -> tuple[int, str]:
+        """固定送信元ポートのTCP接続を使い回して送信する (REQ-E07)。
+
+        node/device/source/flow/sender/heartbeatの呼び出しごとに接続を
+        開いて即座に閉じると、同一の(送信元IP, 固定送信元ポート, 宛先IP,
+        宛先ポート)という4-tupleへ数秒おきに再接続することになり、直前の
+        接続がTIME_WAIT状態から抜けきる前の再接続が`[Errno 99] Cannot
+        assign requested address`で失敗する不具合があった(実運用で確認)。
+        接続を使い回し、エラー時のみ1回だけ張り直す。
+        """
+        headers = {"Content-Type": "application/json"} if body is not None else {}
+        for attempt in (1, 2):
+            if self._conn is None:
+                self._conn = _BoundHTTPConnection(self.ip_address, self.port, self.source_port, self.timeout)
+            try:
+                self._conn.request(method, path, body=body, headers=headers)
+                resp = self._conn.getresponse()
+                text = resp.read().decode("utf-8", errors="replace")
+                return resp.status, text
+            except (OSError, http.client.HTTPException):
+                self.close()
+                if attempt == 2:
+                    raise
+        raise AssertionError("unreachable")  # pragma: no cover
 
     async def register_resource(self, resource_type: str, data: dict) -> None:
         payload = {"type": resource_type, "data": data}

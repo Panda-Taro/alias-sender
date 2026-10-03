@@ -49,6 +49,30 @@ class RegistrationEngine:
         # tracks the last successfully-sent `version` per (zone_rds_config_id, "type:id"),
         # so unchanged resources are not re-POSTed every tick (see _register_if_changed).
         self._last_sent_version: dict[str, dict[str, str]] = {}
+        # zone_rds_config_idごとにクライアント(固定送信元ポート時はTCP接続)を
+        # 使い回す。tickのたびに新規作成すると、固定送信元ポートの場合に
+        # 同一4-tupleへの頻繁な再接続でTIME_WAIT衝突を起こすため(REQ-E07)。
+        self._clients: dict[str, NmosRegistrationClient] = {}
+
+    def _get_client(self, config: models.ZoneRdsConfig) -> NmosRegistrationClient:
+        existing = self._clients.get(config.id)
+        if (
+            existing is not None
+            and existing.ip_address == config.registration_ip_address
+            and existing.port == config.registration_port
+            and existing.source_port == config.registration_source_port
+        ):
+            return existing
+        if existing is not None:
+            existing.close()
+        client = NmosRegistrationClient(
+            config.registration_ip_address,
+            config.registration_port,
+            config.registration_api_version,
+            source_port=config.registration_source_port,
+        )
+        self._clients[config.id] = client
+        return client
 
     async def _register_if_changed(
         self, client: NmosRegistrationClient, config_id: str, resource_type: str, data: dict
@@ -84,6 +108,9 @@ class RegistrationEngine:
         if self._task:
             self._task.cancel()
         self._task = None
+        for client in self._clients.values():
+            client.close()
+        self._clients.clear()
 
     async def _loop(self) -> None:
         while not self._stopping:
@@ -124,12 +151,7 @@ class RegistrationEngine:
         if scope is None:
             return
 
-        client = NmosRegistrationClient(
-            config.registration_ip_address,
-            config.registration_port,
-            config.registration_api_version,
-            source_port=config.registration_source_port,
-        )
+        client = self._get_client(config)
         host = get_primary_ip()
         port = scope.node.node_api_port or settings.node_api_port_start
         version = config.registration_api_version
